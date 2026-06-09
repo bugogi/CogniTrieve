@@ -1,0 +1,222 @@
+import streamlit as st
+import sys
+import os
+
+# root 디렉토리를 path에 추가하여 utils 패키지가 정상 임포트되도록 보장
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.logic_step1 import calculate_persona
+
+# 페이지 설정
+st.set_page_config(
+    page_title="1단계: 사전진단 - CogniTrieve",
+    page_icon="📋",
+    layout="wide"
+)
+
+# 커스텀 CSS 주입
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap');
+    
+    html, body, [data-testid="stSidebar"] {
+        font-family: 'Noto Sans KR', sans-serif;
+    }
+    
+    .page-title {
+        font-size: 2.2rem;
+        font-weight: 800;
+        color: #1E1B4B;
+        margin-bottom: 0.5rem;
+    }
+    
+    .page-subtitle {
+        font-size: 1.1rem;
+        color: #4B5563;
+        margin-bottom: 2rem;
+    }
+    
+    .question-box {
+        background-color: #F9FAFB;
+        border-radius: 8px;
+        padding: 20px;
+        border: 1px solid #E5E7EB;
+        margin-bottom: 1.5rem;
+    }
+    
+    .question-text {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #1F2937;
+        margin-bottom: 0.75rem;
+    }
+    
+    .result-card {
+        border-radius: 12px;
+        padding: 30px;
+        color: #1F2937;
+        margin-top: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    }
+    
+    .result-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 1.8rem;
+        font-weight: 800;
+        margin-bottom: 1rem;
+    }
+    
+    .result-score {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 1.5rem;
+        background-color: rgba(255, 255, 255, 0.5);
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 6px;
+    }
+    
+    .result-body {
+        font-size: 1.05rem;
+        line-height: 1.7;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# 페이지 헤더
+st.markdown("<h1 class='page-title'>📋 1단계: 메타인지 자가 사전진단</h1>", unsafe_allow_html=True)
+st.markdown(
+    "<p class='page-subtitle'>평소 AI(ChatGPT, Claude, Gemini 등)를 코딩 과제나 학습에 어떻게 활용하고 있는지 솔직하게 답변해 주세요.</p>", 
+    unsafe_allow_html=True
+)
+
+st.write("---")
+
+# 리커트 척도 매핑 딕셔너리
+options_map = {
+    "1점 (전혀 아니다)": 1,
+    "2점 (그렇지 않다)": 2,
+    "3점 (보통이다)": 3,
+    "4점 (그렇다)": 4,
+    "5점 (매우 그렇다)": 5
+}
+
+# 질문 정의
+questions = [
+    {
+        "id": "q1",
+        "text": "질문 1: 과제 명세서를 읽고, AI에게 요약이나 조건 추출을 맡기기 전에 나 스스로 과제의 핵심 목표와 필요한 기술 스택을 정리해 보았다."
+    },
+    {
+        "id": "q2",
+        "text": "질문 2: 코드를 타이핑하기 전, 전체 시스템의 아키텍처(클래스 구조, 데이터 흐름 등)를 AI의 도움 없이 스스로 기획하고 스케치했다. (★ 핵심 설계 역량)"
+    },
+    {
+        "id": "q3",
+        "text": "질문 3: AI가 제시한 코드를 내 프로젝트에 적용할 때, 작동 원리를 100% 이해한 로직만 선별하여 직접 타이핑하거나 부분적으로 반영했다."
+    },
+    {
+        "id": "q4",
+        "text": "질문 4: 에러가 발생했을 때, AI에게 로그를 복사해 주기 전에 스스로 원인을 추론해 보는 시간(최소 3분 이상)을 가졌다. (★ 핵심 디버깅 역량)"
+    },
+    {
+        "id": "q5",
+        "text": "질문 5: 작성된 결과물의 장단점(예: 시간/공간 복잡도의 한계)을 AI의 분석에 의존하지 않고, 내 스스로의 논리로 평가하여 설명할 수 있다."
+    }
+]
+
+# 세션 상태 초기화 (결과를 유지하기 위함)
+if 'step1_results' not in st.session_state:
+    st.session_state['step1_results'] = None
+
+# 설문 폼 구성
+with st.form("diagnosis_form"):
+    answers = {}
+    
+    for q in questions:
+        st.markdown(f"<div class='question-box'><div class='question-text'>{q['text']}</div>", unsafe_allow_html=True)
+        # 기본값을 '3점 (보통이다)'으로 설정하여 편안하게 선택할 수 있게 함
+        answers[q['id']] = st.radio(
+            label=q['text'],
+            options=list(options_map.keys()),
+            index=2,
+            horizontal=True,
+            key=f"widget_{q['id']}",
+            label_visibility="collapsed"
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+    submit_button = st.form_submit_button("🩺 사전 진단 결과 분석하기", use_container_width=True)
+
+# 폼 제출 시 비즈니스 로직 수행
+if submit_button:
+    # 텍스트 형태의 선택지를 정수 점수로 변환
+    q1_score = options_map[answers['q1']]
+    q2_score = options_map[answers['q2']]
+    q3_score = options_map[answers['q3']]
+    q4_score = options_map[answers['q4']]
+    q5_score = options_map[answers['q5']]
+    
+    # logic_step1 모듈을 통해 결과 계산
+    diag_result = calculate_persona(q1_score, q2_score, q3_score, q4_score, q5_score)
+    
+    # 세션 상태에 저장하여 다음 페이지 및 파이프라인에서 유지
+    st.session_state['step1_done'] = True
+    st.session_state['step1_persona'] = diag_result['persona']
+    st.session_state['step1_total_score'] = diag_result['total_score']
+    st.session_state['step1_results'] = diag_result
+
+# 결과 렌더링
+if st.session_state['step1_results'] is not None:
+    res = st.session_state['step1_results']
+    
+    # 페르소나별 테마 백그라운드 색상 계산 (투명도 조절 버전)
+    bg_color_map = {
+        "맹목적 의존형": "rgba(239, 68, 68, 0.15)",
+        "효율 중심형": "rgba(245, 158, 11, 0.15)",
+        "방어형": "rgba(59, 130, 246, 0.15)",
+        "자기 주도형": "rgba(16, 185, 129, 0.15)"
+    }
+    bg_color = bg_color_map.get(res['persona'], "rgba(107, 114, 128, 0.15)")
+    
+    st.write("---")
+    st.markdown(f"""
+    <div class='result-card' style='background-color: {bg_color}; border: 2px solid {res['color']};'>
+        <div class='result-header' style='color: {res['color']};'>
+            <span>{res['icon']}</span>
+            <span>진단 결과: {res['title']}</span>
+        </div>
+        <div class='result-score' style='color: #1F2937;'>
+            📊 메타인지 지수 총점: <b>{res['total_score']} / 25 점</b>
+        </div>
+        <div class='result-body'>
+            {res['description']}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 2단계 이동 권장 메세지
+    st.info(
+        "💡 사전 진단이 완료되었습니다! 다음 단계인 **'2단계: 로그 교차 검증'**에서는 실제 AI와의 대화 기록을 분석하여 "
+        "메타인지 성향을 정량적으로 교차 확인하고, 취약한 컴퓨터공학 개념을 파악하게 됩니다."
+    )
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🔍 2단계 로그 교차 검증 페이지로 이동", use_container_width=True, type="primary"):
+            st.switch_page("pages/2_로그분석.py")
+
+# 사이드바 설정
+st.sidebar.markdown("### 🧠 CogniTrieve 네비게이터")
+st.sidebar.success("📋 1단계: 사전진단 진행 중")
+if st.session_state['step1_results'] is not None:
+    st.sidebar.markdown(f"**현재 진단 페르소나**:\n`{st.session_state['step1_persona']}`")
+
+st.sidebar.info(
+    "👉 **진행 순서**:\n"
+    "1. **📋 사전진단 (완료)**\n"
+    "2. 🔍 로그분석\n"
+    "3. 🎯 전이검증"
+)
