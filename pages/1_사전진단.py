@@ -15,7 +15,11 @@ st.set_page_config(
 )
 
 # 동의/세션 가드: 홈 화면에서 동의 및 케이스 선택을 마치지 않은 경우 진행 차단
-if not st.session_state.get("consented") or not st.session_state.get("session_id"):
+if (
+    not st.session_state.get("consented")
+    or not st.session_state.get("session_id")
+    or not st.session_state.get("case")
+):
     st.warning("⚠️ 먼저 홈 화면에서 동의 및 케이스 선택을 완료해 주세요.")
     if st.button("🏠 홈으로 이동", type="primary"):
         st.switch_page("app.py")
@@ -96,7 +100,7 @@ st.markdown("""
 # 페이지 헤더
 st.markdown("<h1 class='page-title'>📋 1단계: 메타인지 자가 사전진단</h1>", unsafe_allow_html=True)
 st.markdown(
-    "<p class='page-subtitle'>평소 AI(ChatGPT, Claude, Gemini 등)를 코딩 과제나 학습에 어떻게 활용하고 있는지 솔직하게 답변해 주세요.</p>", 
+    "<p class='page-subtitle'>평소 AI(ChatGPT, Claude, Gemini 등)를 과제·학습 과정에서 어떻게 활용하고 있는지 솔직하게 답변해 주세요.</p>",
     unsafe_allow_html=True
 )
 
@@ -111,28 +115,11 @@ options_map = {
     "5점 (매우 그렇다)": 5
 }
 
-# 질문 정의
+# 선택된 케이스의 문항을 동적으로 렌더링 (case_id별 텍스트는 cases 테이블 기준, docs/07 3절)
+case = st.session_state["case"]
 questions = [
-    {
-        "id": "q1",
-        "text": "질문 1: 과제 명세서를 읽고, AI에게 요약이나 조건 추출을 맡기기 전에 나 스스로 과제의 핵심 목표와 필요한 기술 스택을 정리해 보았다."
-    },
-    {
-        "id": "q2",
-        "text": "질문 2: 코드를 타이핑하기 전, 전체 시스템의 아키텍처(클래스 구조, 데이터 흐름 등)를 AI의 도움 없이 스스로 기획하고 스케치했다. (★ 핵심 설계 역량)"
-    },
-    {
-        "id": "q3",
-        "text": "질문 3: AI가 제시한 코드를 내 프로젝트에 적용할 때, 작동 원리를 100% 이해한 로직만 선별하여 직접 타이핑하거나 부분적으로 반영했다."
-    },
-    {
-        "id": "q4",
-        "text": "질문 4: 에러가 발생했을 때, AI에게 로그를 복사해 주기 전에 스스로 원인을 추론해 보는 시간(최소 3분 이상)을 가졌다. (★ 핵심 디버깅 역량)"
-    },
-    {
-        "id": "q5",
-        "text": "질문 5: 작성된 결과물의 장단점(예: 시간/공간 복잡도의 한계)을 AI의 분석에 의존하지 않고, 내 스스로의 논리로 평가하여 설명할 수 있다."
-    }
+    {"id": f"q{i}", "text": f"질문 {i}: {text}"}
+    for i, text in enumerate(case["questions"], start=1)
 ]
 
 # 세션 상태 초기화 (결과를 유지하기 위함)
@@ -168,7 +155,7 @@ if submit_button:
     q5_score = options_map[answers['q5']]
     
     # logic_step1 모듈을 통해 결과 계산
-    diag_result = calculate_persona(q1_score, q2_score, q3_score, q4_score, q5_score)
+    diag_result = calculate_persona(case, q1_score, q2_score, q3_score, q4_score, q5_score)
     
     # 세션 상태에 저장하여 다음 페이지 및 파이프라인에서 유지
     st.session_state['step1_done'] = True
@@ -220,7 +207,7 @@ if st.session_state['step1_results'] is not None:
     # 2단계 이동 권장 메세지
     st.info(
         "💡 사전 진단이 완료되었습니다! 다음 단계인 **'2단계: 로그 교차 검증'**에서는 실제 AI와의 대화 기록을 분석하여 "
-        "메타인지 성향을 정량적으로 교차 확인하고, 취약한 컴퓨터공학 개념을 파악하게 됩니다."
+        "메타인지 성향을 정량적으로 교차 확인하고, 취약한 핵심 개념을 파악하게 됩니다."
     )
     
     col1, col2, col3 = st.columns([1, 2, 1])
