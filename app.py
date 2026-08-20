@@ -1,4 +1,8 @@
+import uuid
+
 import streamlit as st
+
+from utils.db_handler import create_session, list_cases
 
 # 페이지 기본 설정
 st.set_page_config(
@@ -102,6 +106,79 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+CASE_TYPE_LABELS = {"A": "텍스트", "B": "코드", "C": "수리", "D": "디자인"}
+
+
+def format_case_label(case: dict) -> str:
+    output_type = case.get("output_type")
+    if output_type:
+        return f"{case['learning_type']} · {CASE_TYPE_LABELS.get(output_type, output_type)}"
+    return case["learning_type"]
+
+
+# 동의 및 케이스 선택 (최초 1회) — 미동의 시 이하 화면 진행 불가
+if "consented" not in st.session_state:
+    st.session_state["consented"] = False
+
+if not st.session_state["consented"]:
+    st.markdown("<h1 class='main-title'>CogniTrieve</h1>", unsafe_allow_html=True)
+    st.markdown(
+        "<p class='main-subtitle'>메타인지 기반 AI 활용 자가진단 및 학습 검증 파이프라인</p>",
+        unsafe_allow_html=True,
+    )
+    st.write("---")
+
+    st.markdown("### 📝 참여 동의 및 케이스 선택")
+    st.markdown(
+        "- **수집 목적**: 학습 과정에서의 AI 활용 방식을 자가진단하고, 파일럿 데이터로서 "
+        "연구·서비스 개선 목적에 활용합니다.\n"
+        "- **수집 항목**: 자가진단 응답, AI 대화 로그 분석 결과, 학습확인 퀴즈 응답. "
+        "실명·학번 등 개인식별정보는 수집하지 않으며 익명 식별자(UUID)로만 구분합니다.\n"
+        "- **보존 기간**: 파일럿 종료 후 별도 고지 시점까지 보관하며, 이후 파기합니다.\n"
+        "- 참여는 자발적이며, 언제든 중단할 수 있습니다."
+    )
+
+    agree = st.checkbox("위 내용을 확인했으며, 참여에 동의합니다.")
+
+    try:
+        cases = list_cases()
+    except Exception as e:
+        st.error(f"Supabase 연결에 실패했습니다: {e}")
+        cases = []
+
+    selected_case_id = None
+    if cases:
+        selected_case = st.selectbox(
+            "진단할 케이스를 선택해 주세요",
+            options=cases,
+            format_func=format_case_label,
+        )
+        selected_case_id = selected_case["case_id"] if selected_case else None
+    else:
+        st.warning(
+            "등록된 케이스가 없습니다. `python scripts/seed_cases.py`로 케이스를 먼저 시딩해 주세요."
+        )
+
+    if st.button(
+        "🚀 동의하고 시작하기",
+        type="primary",
+        use_container_width=True,
+        disabled=not (agree and selected_case_id),
+    ):
+        anon_id = str(uuid.uuid4())
+        try:
+            session_id = create_session(anon_id, selected_case_id)
+        except Exception as e:
+            st.error(f"세션 생성에 실패했습니다: {e}")
+        else:
+            st.session_state["consented"] = True
+            st.session_state["anon_id"] = anon_id
+            st.session_state["session_id"] = session_id
+            st.session_state["case_id"] = selected_case_id
+            st.rerun()
+
+    st.stop()
+
 # 홈 화면 콘텐츠
 st.markdown("<h1 class='main-title'>CogniTrieve</h1>", unsafe_allow_html=True)
 st.markdown("<p class='main-subtitle'>메타인지 기반 AI 활용 자가진단 및 학습 검증 파이프라인</p>", unsafe_allow_html=True)
@@ -176,6 +253,7 @@ with btn_col2:
 
 # 사이드바 안내 정보
 st.sidebar.markdown("### 🧠 CogniTrieve 네비게이터")
+st.sidebar.success(f"✅ 동의 완료 · 선택 케이스: `{st.session_state['case_id']}`")
 st.sidebar.info(
     "메뉴나 화면 하단의 버튼을 통해 단계별 파이프라인을 차례로 진행해 주시기 바랍니다.\n\n"
     "👉 **진행 순서**:\n"
