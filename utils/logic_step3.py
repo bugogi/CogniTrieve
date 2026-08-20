@@ -57,17 +57,17 @@ def generate_adaptive_quiz(target_concept: str, risk_highlight: str) -> dict:
         
     return result
 
-def verify_answer(student_answer: str, expected_keywords: list) -> bool:
+def find_matched_keyword(student_answer: str, expected_keywords: list):
     """
-    학생의 답변이 예상 키워드(expected_keywords) 중 하나라도 포함하고 있는지 검증합니다.
+    학생의 답변에 실제로 포함된 첫 번째 예상 키워드를 반환합니다(없으면 None).
     순수 파이썬 로직으로 동작하며, 대소문자나 띄어쓰기에 무관하게 동작하도록 문자열을 정제합니다.
     """
     if not student_answer or not expected_keywords:
-        return False
-        
+        return None
+
     # 학생 답변 공백 제거 및 소문자 변환
     cleaned_student = "".join(student_answer.split()).lower()
-    
+
     for kw in expected_keywords:
         if not kw:
             continue
@@ -77,6 +77,13 @@ def verify_answer(student_answer: str, expected_keywords: list) -> bool:
             continue
         # 포함 여부 검증
         if cleaned_kw in cleaned_student:
-            return True
-            
-    return False
+            return kw
+
+    return None
+
+
+def verify_answer(student_answer: str, expected_keywords: list) -> bool:
+    """
+    학생의 답변이 예상 키워드(expected_keywords) 중 하나라도 포함하고 있는지 검증합니다.
+    """
+    return find_matched_keyword(student_answer, expected_keywords) is not None

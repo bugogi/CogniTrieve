@@ -4,6 +4,7 @@ import os
 
 # root 디렉토리를 path에 추가하여 utils 패키지가 정상 임포트되도록 보장
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.db_handler import save_step2_response
 from utils.logic_step2 import analyze_student_log
 
 # 페이지 설정
@@ -12,6 +13,13 @@ st.set_page_config(
     page_icon="🔍",
     layout="wide"
 )
+
+# 동의/세션 가드: 홈 화면에서 동의 및 케이스 선택을 마치지 않은 경우 진행 차단
+if not st.session_state.get("consented") or not st.session_state.get("session_id"):
+    st.warning("⚠️ 먼저 홈 화면에서 동의 및 케이스 선택을 완료해 주세요.")
+    if st.button("🏠 홈으로 이동", type="primary"):
+        st.switch_page("app.py")
+    st.stop()
 
 # 커스텀 CSS 주입
 st.markdown("""
@@ -160,7 +168,20 @@ if st.button("⚡ Gemini AI 교차 분석 시작", type="primary", use_container
                 # 결과 세션 저장
                 st.session_state['step2_result'] = analysis_res
                 st.session_state['step2_done'] = True
-                
+
+                # Supabase에 응답 영구 저장
+                try:
+                    save_step2_response(
+                        session_id=st.session_state['session_id'],
+                        case_id=st.session_state['case_id'],
+                        health_score=analysis_res['health_score'],
+                        components=analysis_res.get('components'),
+                        risk_highlight=analysis_res['risk_highlight'],
+                        analysis_summary=analysis_res['analysis_summary'],
+                    )
+                except Exception as db_e:
+                    st.error(f"응답 저장 중 오류가 발생했습니다(분석 결과는 정상 표시됩니다): {db_e}")
+
             except Exception as e:
                 st.error(f"분석 중 오류가 발생했습니다: {str(e)}")
 

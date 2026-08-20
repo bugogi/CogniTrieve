@@ -4,6 +4,7 @@ import os
 
 # root 디렉토리를 path에 추가하여 utils 패키지가 정상 임포트되도록 보장
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.db_handler import save_step1_response
 from utils.logic_step1 import calculate_persona
 
 # 페이지 설정
@@ -12,6 +13,13 @@ st.set_page_config(
     page_icon="📋",
     layout="wide"
 )
+
+# 동의/세션 가드: 홈 화면에서 동의 및 케이스 선택을 마치지 않은 경우 진행 차단
+if not st.session_state.get("consented") or not st.session_state.get("session_id"):
+    st.warning("⚠️ 먼저 홈 화면에서 동의 및 케이스 선택을 완료해 주세요.")
+    if st.button("🏠 홈으로 이동", type="primary"):
+        st.switch_page("app.py")
+    st.stop()
 
 # 커스텀 CSS 주입
 st.markdown("""
@@ -167,6 +175,18 @@ if submit_button:
     st.session_state['step1_persona'] = diag_result['persona']
     st.session_state['step1_total_score'] = diag_result['total_score']
     st.session_state['step1_results'] = diag_result
+
+    # Supabase에 응답 영구 저장
+    try:
+        save_step1_response(
+            session_id=st.session_state['session_id'],
+            case_id=st.session_state['case_id'],
+            q1=q1_score, q2=q2_score, q3=q3_score, q4=q4_score, q5=q5_score,
+            total_score=diag_result['total_score'],
+            persona=diag_result['persona'],
+        )
+    except Exception as e:
+        st.error(f"응답 저장 중 오류가 발생했습니다(진단 결과는 정상 표시됩니다): {e}")
 
 # 결과 렌더링
 if st.session_state['step1_results'] is not None:

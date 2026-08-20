@@ -4,7 +4,8 @@ import os
 
 # root 디렉토리를 path에 추가하여 utils 패키지가 정상 임포트되도록 보장
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.logic_step3 import generate_adaptive_quiz, verify_answer
+from utils.db_handler import save_step3_response
+from utils.logic_step3 import find_matched_keyword, generate_adaptive_quiz, verify_answer
 
 # 페이지 설정
 st.set_page_config(
@@ -12,6 +13,13 @@ st.set_page_config(
     page_icon="🎯",
     layout="wide"
 )
+
+# 동의/세션 가드: 홈 화면에서 동의 및 케이스 선택을 마치지 않은 경우 진행 차단
+if not st.session_state.get("consented") or not st.session_state.get("session_id"):
+    st.warning("⚠️ 먼저 홈 화면에서 동의 및 케이스 선택을 완료해 주세요.")
+    if st.button("🏠 홈으로 이동", type="primary"):
+        st.switch_page("app.py")
+    st.stop()
 
 # 커스텀 CSS 주입
 st.markdown("""
@@ -226,9 +234,24 @@ with col_submit:
         else:
             # 정답 검증 로직 수행 (순수 파이썬 알고리즘 호출)
             is_correct = verify_answer(student_answer, quiz['expected_keywords'])
+            matched_keyword = find_matched_keyword(student_answer, quiz['expected_keywords'])
             st.session_state['step3_submitted'] = True
             st.session_state['step3_is_correct'] = is_correct
-            
+
+            # Supabase에 응답 영구 저장
+            try:
+                save_step3_response(
+                    session_id=st.session_state['session_id'],
+                    case_id=st.session_state['case_id'],
+                    quiz_type=quiz['quiz_type'],
+                    dynamic_question=quiz['dynamic_question'],
+                    student_answer=student_answer,
+                    is_correct=is_correct,
+                    matched_keyword=matched_keyword,
+                )
+            except Exception as db_e:
+                st.error(f"응답 저장 중 오류가 발생했습니다(채점 결과는 정상 표시됩니다): {db_e}")
+
             # 정답일 경우 세션 리스트에 키워드를 영구 저장 및 축하 풍선
             if is_correct:
                 st.balloons()
