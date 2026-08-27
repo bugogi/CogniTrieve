@@ -147,23 +147,52 @@ with col_ex2:
         # text_area의 key에 직접 값 할당
         st.session_state['log_input_widget'] = example_self_directed
 
-# 대화 입력 필드 설정 
+# 대화 입력 필드 설정
 log_input = st.text_area(
-    "AI 대화 로그 입력란", 
-    height=250, 
+    "AI 대화 로그 입력란",
+    height=250,
     placeholder="여기에 복사한 AI 대화 로그를 붙여넣어 주세요.\n(또는 위쪽의 예제 로드 버튼을 눌러 테스트해 보실 수 있습니다.)",
     key="log_input_widget"
 )
+
+# 자기보고 UI: 결과물을 AI와 직접 비교할 수 없는 케이스(D=디자인, 수강, 시험대비)만 노출
+case = st.session_state["case"]
+uses_self_report = case.get("output_type") in (None, "D")
+
+adoption_choice = None
+revision_count = 0
+if uses_self_report:
+    st.markdown("##### 📝 자기보고: AI 결과물 처리 방식")
+    adoption_choice = st.radio(
+        "AI가 만든 결과물을 어떻게 처리했나요?",
+        ["그대로 채택", "일부 수정", "전면 재작업"],
+        index=None,
+        key="adoption_choice_widget",
+    )
+    revision_count = st.number_input(
+        "수정을 요청한 프롬프트 횟수",
+        min_value=0,
+        step=1,
+        value=0,
+        key="revision_count_widget",
+    )
 
 # 분석 실행 버튼
 if st.button("⚡ Gemini AI 교차 분석 시작", type="primary", use_container_width=True):
     if not log_input.strip():
         st.error("분석할 대화 로그를 입력해 주세요!")
+    elif uses_self_report and adoption_choice is None:
+        st.error("자기보고 항목(AI 결과물 처리 방식)을 선택해 주세요!")
     else:
         with st.spinner("Gemini API와 통신하여 대화 기록 속의 메타인지 성향을 정밀 분석 중입니다..."):
             try:
+                self_report = (
+                    {"adoption_choice": adoption_choice, "revision_count": revision_count}
+                    if uses_self_report
+                    else None
+                )
                 # utils/logic_step2.py 모듈 호출
-                analysis_res = analyze_student_log(log_input)
+                analysis_res = analyze_student_log(case, log_input, self_report)
                 
                 # 결과 세션 저장
                 st.session_state['step2_result'] = analysis_res
