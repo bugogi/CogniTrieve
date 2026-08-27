@@ -175,6 +175,7 @@ if not st.session_state["consented"]:
             st.session_state["anon_id"] = anon_id
             st.session_state["session_id"] = session_id
             st.session_state["case_id"] = selected_case_id
+            st.session_state["case"] = selected_case
             st.rerun()
 
     st.stop()
