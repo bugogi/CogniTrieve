@@ -158,6 +158,7 @@ log_input = st.text_area(
 # 자기보고 UI: 결과물을 AI와 직접 비교할 수 없는 케이스(D=디자인, 수강, 시험대비)만 노출
 case = st.session_state["case"]
 uses_self_report = case.get("output_type") in (None, "D")
+uses_code_compare = case.get("output_type") == "B"
 
 adoption_choice = None
 revision_count = 0
@@ -177,12 +178,31 @@ if uses_self_report:
         key="revision_count_widget",
     )
 
+ai_code = ""
+student_code = ""
+if uses_code_compare:
+    st.markdown("##### 📝 결과물 비교: AI가 제시한 코드 vs 학생 최종 코드")
+    ai_code = st.text_area(
+        "AI가 제시한 코드",
+        height=200,
+        placeholder="AI가 처음 제시한 코드를 붙여넣어 주세요.",
+        key="ai_code_widget",
+    )
+    student_code = st.text_area(
+        "학생 최종 코드",
+        height=200,
+        placeholder="실제로 제출/사용한 최종 코드를 붙여넣어 주세요.",
+        key="student_code_widget",
+    )
+
 # 분석 실행 버튼
 if st.button("⚡ Gemini AI 교차 분석 시작", type="primary", use_container_width=True):
     if not log_input.strip():
         st.error("분석할 대화 로그를 입력해 주세요!")
     elif uses_self_report and adoption_choice is None:
         st.error("자기보고 항목(AI 결과물 처리 방식)을 선택해 주세요!")
+    elif uses_code_compare and (not ai_code.strip() or not student_code.strip()):
+        st.error("AI가 제시한 코드와 학생 최종 코드를 모두 입력해 주세요!")
     else:
         with st.spinner("Gemini API와 통신하여 대화 기록 속의 메타인지 성향을 정밀 분석 중입니다..."):
             try:
@@ -191,8 +211,13 @@ if st.button("⚡ Gemini AI 교차 분석 시작", type="primary", use_container
                     if uses_self_report
                     else None
                 )
+                code_pair = (
+                    {"ai_code": ai_code, "student_code": student_code}
+                    if uses_code_compare
+                    else None
+                )
                 # utils/logic_step2.py 모듈 호출
-                analysis_res = analyze_student_log(case, log_input, self_report)
+                analysis_res = analyze_student_log(case, log_input, self_report, code_pair)
                 
                 # 결과 세션 저장
                 st.session_state['step2_result'] = analysis_res
