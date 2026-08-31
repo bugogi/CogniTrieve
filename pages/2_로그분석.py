@@ -159,6 +159,7 @@ log_input = st.text_area(
 case = st.session_state["case"]
 uses_self_report = case.get("output_type") in (None, "D")
 uses_code_compare = case.get("output_type") == "B"
+uses_text_compare = case.get("output_type") == "A"
 
 adoption_choice = None
 revision_count = 0
@@ -195,6 +196,23 @@ if uses_code_compare:
         key="student_code_widget",
     )
 
+ai_text = ""
+student_text = ""
+if uses_text_compare:
+    st.markdown("##### 📝 결과물 비교: AI 초안 vs 학생 최종 제출문")
+    ai_text = st.text_area(
+        "AI 초안",
+        height=200,
+        placeholder="AI가 처음 제시한 초안(글)을 붙여넣어 주세요.",
+        key="ai_text_widget",
+    )
+    student_text = st.text_area(
+        "학생 최종 제출문",
+        height=200,
+        placeholder="실제로 제출한 최종 글을 붙여넣어 주세요.",
+        key="student_text_widget",
+    )
+
 # 분석 실행 버튼
 if st.button("⚡ Gemini AI 교차 분석 시작", type="primary", use_container_width=True):
     if not log_input.strip():
@@ -203,6 +221,8 @@ if st.button("⚡ Gemini AI 교차 분석 시작", type="primary", use_container
         st.error("자기보고 항목(AI 결과물 처리 방식)을 선택해 주세요!")
     elif uses_code_compare and (not ai_code.strip() or not student_code.strip()):
         st.error("AI가 제시한 코드와 학생 최종 코드를 모두 입력해 주세요!")
+    elif uses_text_compare and (not ai_text.strip() or not student_text.strip()):
+        st.error("AI 초안과 학생 최종 제출문을 모두 입력해 주세요!")
     else:
         with st.spinner("Gemini API와 통신하여 대화 기록 속의 메타인지 성향을 정밀 분석 중입니다..."):
             try:
@@ -216,8 +236,13 @@ if st.button("⚡ Gemini AI 교차 분석 시작", type="primary", use_container
                     if uses_code_compare
                     else None
                 )
+                text_pair = (
+                    {"ai_text": ai_text, "student_text": student_text}
+                    if uses_text_compare
+                    else None
+                )
                 # utils/logic_step2.py 모듈 호출
-                analysis_res = analyze_student_log(case, log_input, self_report, code_pair)
+                analysis_res = analyze_student_log(case, log_input, self_report, code_pair, text_pair)
                 
                 # 결과 세션 저장
                 st.session_state['step2_result'] = analysis_res
