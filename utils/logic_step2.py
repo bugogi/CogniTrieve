@@ -1,6 +1,7 @@
 # utils/logic_step2.py
 import json
 
+from utils.comparison import code_compare
 from utils.comparison.self_report import calculate_autonomy_score
 from utils.llm_handler import call_gemini_api
 
@@ -8,9 +9,12 @@ from utils.llm_handler import call_gemini_api
 HEALTH_SCORE_WEIGHTS = (1 / 3, 1 / 3, 1 / 3)
 
 # output_type이 이 값에 해당하는 케이스(D/수강/시험대비)는 결과물 직접 비교가 불가능해
-# 자기보고 방식(신규 경로)을 쓴다. A/B/C는 각자의 comparison 모듈이 아직 없어 레거시
-# 단일 health_score 경로를 그대로 유지한다 (docs/10 구현 Phase 3 3-a 범위).
+# 자기보고 방식(신규 경로)을 쓴다 (docs/10 구현 Phase 3 3-a 범위).
 _SELF_REPORT_OUTPUT_TYPES = (None, "D")
+
+# B(코드)는 diff/AST 비교 방식(신규 경로)을 쓴다 (docs/10 구현 Phase 3 3-b 범위).
+# A/C는 각자의 comparison 모듈이 아직 없어 레거시 단일 health_score 경로를 그대로 유지한다.
+_CODE_COMPARE_OUTPUT_TYPES = ("B",)
 
 _LEGACY_SYSTEM_PROMPT = (
     "당신은 CS 전공 학생의 메타인지를 평가하는 AI 튜터입니다. 사용자가 입력한 프롬프트 대화 로그를 분석하여 '인지적 구두쇠' 행동을 찾아내세요.\n\n"
@@ -61,7 +65,7 @@ def _parse_json_response(raw_response: str) -> dict:
 
 
 def _analyze_log_legacy(dialogue_log: str) -> dict:
-    """output_type이 A/B/C인 케이스용 레거시 경로: Gemini가 health_score를 직접 산출."""
+    """output_type이 A/C인 케이스용 레거시 경로: Gemini가 health_score를 직접 산출."""
     raw_response = call_gemini_api(_LEGACY_SYSTEM_PROMPT, dialogue_log, temperature=0.1)
     result = _parse_json_response(raw_response)
 
@@ -107,18 +111,26 @@ def _analyze_log_general(dialogue_log: str) -> dict:
     return result
 
 
-def analyze_student_log(case: dict, dialogue_log: str, self_report: dict | None = None) -> dict:
+def analyze_student_log(
+    case: dict,
+    dialogue_log: str,
+    self_report: dict | None = None,
+    code_pair: dict | None = None,
+) -> dict:
     """
     학생이 AI와 나눈 대화 로그를 받아 Gemini API를 호출하고 분석 결과를 반환합니다.
 
-    case["output_type"]이 None(수강/시험대비) 또는 "D"(디자인)이면 자기보고 방식으로
-    autonomy를 산출해 세 컴포넌트 균등 가중 health_score를 계산하고(self_report 필수),
-    A/B/C이면 기존 레거시 경로(Gemini가 health_score 직접 산출)를 그대로 사용한다.
+    case["output_type"]이 None(수강/시험대비) 또는 "D"(디자인)이면 자기보고 방식으로,
+    "B"(코드)면 diff/AST 비교 방식으로 autonomy를 산출해 세 컴포넌트 균등 가중
+    health_score를 계산한다(각각 self_report/code_pair 필수). A/C이면 기존 레거시
+    경로(Gemini가 health_score 직접 산출)를 그대로 사용한다.
     """
     if not dialogue_log.strip():
         raise ValueError("입력된 대화 로그가 비어 있습니다. 분석할 로그를 입력해 주세요.")
 
-    if case.get("output_type") in _SELF_REPORT_OUTPUT_TYPES:
+    output_type = case.get("output_type")
+
+    if output_type in _SELF_REPORT_OUTPUT_TYPES:
         if self_report is None:
             raise ValueError("이 케이스는 자기보고(self_report) 입력이 필요합니다.")
 
@@ -126,17 +138,32 @@ def analyze_student_log(case: dict, dialogue_log: str, self_report: dict | None 
         autonomy = calculate_autonomy_score(
             self_report["adoption_choice"], self_report["revision_count"]
         )
-        components = {
-            "prompt_soundness": llm_result["prompt_soundness"],
-            "autonomy": autonomy,
-            "risk_deduction": llm_result["risk_deduction"],
-        }
-        return {
-            "health_score": calculate_health_score(components),
-            "components": components,
-            "risk_highlight": llm_result["risk_highlight"],
-            "analysis_summary": llm_result["analysis_summary"],
-            "target_concept": llm_result["target_concept"],
-        }
+        return _build_component_result(llm_result, autonomy)
+
+    if output_type in _CODE_COMPARE_OUTPUT_TYPES:
+        if code_pair is None:
+            raise ValueError("이 케이스는 코드 비교(code_pair) 입력이 필요합니다.")
+
+        llm_result = _analyze_log_general(dialogue_log)
+        autonomy = code_compare.calculate_autonomy_score(
+            code_pair["ai_code"], code_pair["student_code"]
+        )
+        return _build_component_result(llm_result, autonomy)
 
     return _analyze_log_legacy(dialogue_log)
+
+
+def _build_component_result(llm_result: dict, autonomy: int) -> dict:
+    """prompt_soundness/risk_deduction(LLM) + autonomy(비교 모듈)를 조합해 최종 응답을 구성합니다."""
+    components = {
+        "prompt_soundness": llm_result["prompt_soundness"],
+        "autonomy": autonomy,
+        "risk_deduction": llm_result["risk_deduction"],
+    }
+    return {
+        "health_score": calculate_health_score(components),
+        "components": components,
+        "risk_highlight": llm_result["risk_highlight"],
+        "analysis_summary": llm_result["analysis_summary"],
+        "target_concept": llm_result["target_concept"],
+    }
