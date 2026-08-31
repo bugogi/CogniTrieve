@@ -41,3 +41,23 @@ def call_gemini_api(system_prompt: str, user_prompt: str, temperature: float = 0
             
     except Exception as e:
         raise RuntimeError(f"Gemini API 호출 중 오류 발생: {str(e)}")
+
+
+def embed_text(text: str, task_type: str = "SEMANTIC_SIMILARITY") -> list[float]:
+    """
+    Gemini Embedding API(models/gemini-embedding-001)로 텍스트를 임베딩 벡터(3072차원)로
+    변환하는 공통 함수입니다. task_type 기본값은 의미 유사도 비교에 특화된
+    "SEMANTIC_SIMILARITY"입니다.
+    """
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다. 프로젝트 루트의 .env 파일에 'GEMINI_API_KEY=your_key_here'를 등록해 주세요.")
+
+    try:
+        response = genai.embed_content(
+            model="models/gemini-embedding-001",
+            content=text,
+            task_type=task_type,
+        )
+        return response["embedding"]
+    except Exception as e:
+        raise RuntimeError(f"Gemini Embedding API 호출 중 오류 발생: {str(e)}")

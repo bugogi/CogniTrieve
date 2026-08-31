@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 from utils.logic_step2 import analyze_student_log, calculate_health_score
 
-# 레거시 경로(A/C만 남음 — B는 3-b에서 diff/AST 비교 경로로 전환) fixture
+# 레거시 경로(C만 남음 — B는 3-b, A는 3-c에서 각자의 비교 경로로 전환) fixture
 CASE_LEGACY = {"case_id": "assignment_C", "output_type": "C"}
 
 # 신규 경로(D/수강/시험대비) fixture
@@ -12,6 +12,9 @@ CASE_DESIGN = {"case_id": "assignment_D", "output_type": "D"}
 
 # 신규 경로(B=코드, diff/AST 비교) fixture
 CASE_CODE = {"case_id": "assignment_B", "output_type": "B"}
+
+# 신규 경로(A=텍스트, 임베딩 유사도+문장 재구성 비율) fixture
+CASE_TEXT = {"case_id": "assignment_A", "output_type": "A"}
 
 
 class TestLogicStep2Legacy(unittest.TestCase):
@@ -114,6 +117,35 @@ class TestLogicStep2CodeCompare(unittest.TestCase):
     def test_code_compare_path_requires_code_pair(self):
         with self.assertRaises(ValueError):
             analyze_student_log(CASE_CODE, "일부 로그 내용", code_pair=None)
+
+
+class TestLogicStep2TextCompare(unittest.TestCase):
+    @patch('utils.logic_step2.text_compare.calculate_autonomy_score')
+    @patch('utils.logic_step2.call_gemini_api')
+    def test_text_compare_path_combines_components(self, mock_call_api, mock_autonomy):
+        mock_call_api.return_value = (
+            '{"prompt_soundness": 55, '
+            '"risk_deduction": 65, '
+            '"risk_highlight": "", '
+            '"analysis_summary": "요약", '
+            '"target_concept": "핵심 논거"}'
+        )
+        mock_autonomy.return_value = 40
+        text_pair = {"ai_text": "AI 초안 텍스트", "student_text": "학생 최종 제출문"}
+
+        result = analyze_student_log(CASE_TEXT, "일부 로그 내용", text_pair=text_pair)
+
+        mock_autonomy.assert_called_once_with("AI 초안 텍스트", "학생 최종 제출문")
+        self.assertEqual(result["components"], {
+            "prompt_soundness": 55,
+            "autonomy": 40,
+            "risk_deduction": 65,
+        })
+        self.assertEqual(result["health_score"], 53)  # round((55+40+65)/3) = round(53.33) = 53
+
+    def test_text_compare_path_requires_text_pair(self):
+        with self.assertRaises(ValueError):
+            analyze_student_log(CASE_TEXT, "일부 로그 내용", text_pair=None)
 
 
 class TestCalculateHealthScore(unittest.TestCase):
