@@ -24,19 +24,6 @@ _TEXT_COMPARE_OUTPUT_TYPES = ("A",)
 # 문법 오류 등) 자기보고 방식(self_report)으로 자동 폴백한다.
 _MATH_COMPARE_OUTPUT_TYPES = ("C",)
 
-_LEGACY_SYSTEM_PROMPT = (
-    "당신은 CS 전공 학생의 메타인지를 평가하는 AI 튜터입니다. 사용자가 입력한 프롬프트 대화 로그를 분석하여 '인지적 구두쇠' 행동을 찾아내세요.\n\n"
-    "'전체 코드 짜줘', '이 에러 알아서 고쳐줘' 같은 무지성 위임 지시어에는 health_score(건강도 점수)를 대폭 감점하세요.\n\n"
-    "에러 메시지의 의미를 묻거나, 가설을 제시하거나, 로직의 방향성을 토론하는 질문에는 가점을 주십시오.\n\n"
-    "분석 결과는 반드시 다음 구조의 JSON 객체로만 반환해야 합니다:\n"
-    "{\n"
-    '  "health_score": (0~100 사이의 정수),\n'
-    '  "risk_highlight": "로그에서 추출한 가장 치명적인 의존형 지시 문장 (최대 2문장)",\n'
-    '  "analysis_summary": "인지 패턴에 대한 정성적 분석 및 평가 요약",\n'
-    '  "target_concept": "3단계 퀴즈 출제용 핵심 CS 개념 단어 1개 (예: 포인터 메모리 유효 범위, 시간 복잡도 등)"\n'
-    "}"
-)
-
 _GENERAL_SYSTEM_PROMPT = (
     "당신은 학생의 메타인지를 평가하는 AI 튜터입니다. 사용자가 입력한 프롬프트 대화 로그를 분석하여 '인지적 구두쇠' 행동을 찾아내세요.\n\n"
     "'전체 다 짜줘', '알아서 완성해줘' 같은 무지성 위임 지시어에는 prompt_soundness(프롬프트 건전성 지수)를 대폭 감점하세요.\n\n"
@@ -70,35 +57,6 @@ def _parse_json_response(raw_response: str) -> dict:
         return json.loads(raw_response)
     except json.JSONDecodeError as e:
         raise RuntimeError(f"API 응답이 올바른 JSON 형식이 아닙니다. 원본 응답: {raw_response}") from e
-
-
-def _analyze_log_legacy(dialogue_log: str) -> dict:
-    """레거시 경로: Gemini가 health_score를 직접 산출.
-
-    3-d(구현 Phase 3 마지막 사이클) 완료로 A/B/C/D/None 전부 신규 경로로 전환되어
-    더 이상 어떤 output_type에서도 호출되지 않는 죽은 코드다. Phase 3 완료 후
-    별도 정리 커밋으로 제거 예정(docs/10 참조) — 이번 사이클 범위에서는 의도적으로
-    남겨둔다.
-    """
-    raw_response = call_gemini_api(_LEGACY_SYSTEM_PROMPT, dialogue_log, temperature=0.1)
-    result = _parse_json_response(raw_response)
-
-    required_keys = ["health_score", "risk_highlight", "analysis_summary", "target_concept"]
-    for key in required_keys:
-        if key not in result:
-            if key == "health_score":
-                result[key] = 50
-            elif key == "target_concept":
-                result[key] = "데이터 구조 기초"
-            else:
-                result[key] = f"[{key} 분석 정보가 누락되었습니다]"
-
-    try:
-        result["health_score"] = max(0, min(100, int(result["health_score"])))
-    except (ValueError, TypeError):
-        result["health_score"] = 50
-
-    return result
 
 
 def _analyze_log_general(dialogue_log: str) -> dict:
@@ -142,7 +100,9 @@ def analyze_student_log(
     산출해 세 컴포넌트 균등 가중 health_score를 계산한다(각각
     self_report/code_pair/text_pair/math_pair 필수). "C"는 최종 수식이 sympy로
     파싱되지 않으면(한글 혼입 등) self_report 방식으로 자동 폴백하므로, "C"는
-    math_pair와 self_report를 모두 요구한다.
+    math_pair와 self_report를 모두 요구한다. 위 다섯 값(None/"A"/"B"/"C"/"D") 중
+    무엇에도 해당하지 않는 output_type이면 ValueError를 던진다(cases 테이블에
+    잘못된 값이 들어간 경우를 조기에 드러내기 위함).
     """
     if not dialogue_log.strip():
         raise ValueError("입력된 대화 로그가 비어 있습니다. 분석할 로그를 입력해 주세요.")
@@ -201,7 +161,7 @@ def analyze_student_log(
             )
         return _build_component_result(llm_result, autonomy)
 
-    return _analyze_log_legacy(dialogue_log)
+    raise ValueError(f"알 수 없는 output_type입니다: {output_type!r}")
 
 
 def _build_component_result(llm_result: dict, autonomy: int) -> dict:
