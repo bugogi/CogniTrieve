@@ -160,10 +160,12 @@ case = st.session_state["case"]
 uses_self_report = case.get("output_type") in (None, "D")
 uses_code_compare = case.get("output_type") == "B"
 uses_text_compare = case.get("output_type") == "A"
+uses_math_compare = case.get("output_type") == "C"
 
 adoption_choice = None
 revision_count = 0
-if uses_self_report:
+# C(물리)는 수식 파싱 실패 시 이 값으로 폴백해야 하므로, 항상 함께 표시한다.
+if uses_self_report or uses_math_compare:
     st.markdown("##### 📝 자기보고: AI 결과물 처리 방식")
     adoption_choice = st.radio(
         "AI가 만든 결과물을 어떻게 처리했나요?",
@@ -213,22 +215,66 @@ if uses_text_compare:
         key="student_text_widget",
     )
 
+ai_final_formula = ""
+student_final_formula = ""
+ai_solution_text = ""
+student_solution_text = ""
+if uses_math_compare:
+    st.markdown("##### 📝 결과물 비교: 수식 동치 판정 + 전개 단계 수")
+    st.caption(
+        "곱셈은 반드시 `*`로 써주세요(예: `2*a*s`, `2as`는 인식되지 않습니다). "
+        "최종 수식/답은 `=`가 포함된 한 줄로 입력해 주세요. "
+        "수식 인식에 실패하면 위 자기보고 응답으로 자동 대체됩니다."
+    )
+    formula_col1, formula_col2 = st.columns(2)
+    with formula_col1:
+        ai_final_formula = st.text_input(
+            "AI 최종 수식/답",
+            placeholder="예: F = m*a",
+            key="ai_final_formula_widget",
+        )
+    with formula_col2:
+        student_final_formula = st.text_input(
+            "학생 최종 수식/답",
+            placeholder="예: F = m*a",
+            key="student_final_formula_widget",
+        )
+    ai_solution_text = st.text_area(
+        "AI 전체 풀이 과정",
+        height=200,
+        placeholder="AI가 제시한 전체 풀이 과정을 줄바꿈으로 구분해 붙여넣어 주세요.",
+        key="ai_solution_text_widget",
+    )
+    student_solution_text = st.text_area(
+        "학생 전체 풀이 과정",
+        height=200,
+        placeholder="실제로 작성한 전체 풀이 과정을 줄바꿈으로 구분해 붙여넣어 주세요.",
+        key="student_solution_text_widget",
+    )
+
 # 분석 실행 버튼
 if st.button("⚡ Gemini AI 교차 분석 시작", type="primary", use_container_width=True):
     if not log_input.strip():
         st.error("분석할 대화 로그를 입력해 주세요!")
-    elif uses_self_report and adoption_choice is None:
+    elif (uses_self_report or uses_math_compare) and adoption_choice is None:
         st.error("자기보고 항목(AI 결과물 처리 방식)을 선택해 주세요!")
     elif uses_code_compare and (not ai_code.strip() or not student_code.strip()):
         st.error("AI가 제시한 코드와 학생 최종 코드를 모두 입력해 주세요!")
     elif uses_text_compare and (not ai_text.strip() or not student_text.strip()):
         st.error("AI 초안과 학생 최종 제출문을 모두 입력해 주세요!")
+    elif uses_math_compare and (
+        not ai_final_formula.strip()
+        or not student_final_formula.strip()
+        or not ai_solution_text.strip()
+        or not student_solution_text.strip()
+    ):
+        st.error("AI/학생 최종 수식과 전체 풀이 과정을 모두 입력해 주세요!")
     else:
         with st.spinner("Gemini API와 통신하여 대화 기록 속의 메타인지 성향을 정밀 분석 중입니다..."):
             try:
                 self_report = (
                     {"adoption_choice": adoption_choice, "revision_count": revision_count}
-                    if uses_self_report
+                    if (uses_self_report or uses_math_compare)
                     else None
                 )
                 code_pair = (
@@ -241,8 +287,20 @@ if st.button("⚡ Gemini AI 교차 분석 시작", type="primary", use_container
                     if uses_text_compare
                     else None
                 )
+                math_pair = (
+                    {
+                        "ai_final_formula": ai_final_formula,
+                        "student_final_formula": student_final_formula,
+                        "ai_solution_text": ai_solution_text,
+                        "student_solution_text": student_solution_text,
+                    }
+                    if uses_math_compare
+                    else None
+                )
                 # utils/logic_step2.py 모듈 호출
-                analysis_res = analyze_student_log(case, log_input, self_report, code_pair, text_pair)
+                analysis_res = analyze_student_log(
+                    case, log_input, self_report, code_pair, text_pair, math_pair
+                )
                 
                 # 결과 세션 저장
                 st.session_state['step2_result'] = analysis_res

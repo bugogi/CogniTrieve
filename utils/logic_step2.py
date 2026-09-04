@@ -1,7 +1,7 @@
 # utils/logic_step2.py
 import json
 
-from utils.comparison import code_compare, text_compare
+from utils.comparison import code_compare, math_compare, text_compare
 from utils.comparison.self_report import calculate_autonomy_score
 from utils.llm_handler import call_gemini_api
 
@@ -16,9 +16,13 @@ _SELF_REPORT_OUTPUT_TYPES = (None, "D")
 _CODE_COMPARE_OUTPUT_TYPES = ("B",)
 
 # A(텍스트)는 임베딩 유사도 + 문장 재구성 비율 방식(신규 경로)을 쓴다
-# (docs/10 구현 Phase 3 3-c 범위). C는 아직 comparison 모듈이 없어 레거시 단일
-# health_score 경로를 그대로 유지한다(3-d에서 처리 예정).
+# (docs/10 구현 Phase 3 3-c 범위).
 _TEXT_COMPARE_OUTPUT_TYPES = ("A",)
+
+# C(물리)는 수식 동치 판정 + 전개 단계 수 비율 방식(신규 경로)을 쓴다
+# (docs/10 구현 Phase 3 3-d 범위). 최종 수식이 sympy로 파싱되지 않으면(한글 혼입,
+# 문법 오류 등) 자기보고 방식(self_report)으로 자동 폴백한다.
+_MATH_COMPARE_OUTPUT_TYPES = ("C",)
 
 _LEGACY_SYSTEM_PROMPT = (
     "당신은 CS 전공 학생의 메타인지를 평가하는 AI 튜터입니다. 사용자가 입력한 프롬프트 대화 로그를 분석하여 '인지적 구두쇠' 행동을 찾아내세요.\n\n"
@@ -69,7 +73,13 @@ def _parse_json_response(raw_response: str) -> dict:
 
 
 def _analyze_log_legacy(dialogue_log: str) -> dict:
-    """output_type이 C인 케이스용 레거시 경로: Gemini가 health_score를 직접 산출."""
+    """레거시 경로: Gemini가 health_score를 직접 산출.
+
+    3-d(구현 Phase 3 마지막 사이클) 완료로 A/B/C/D/None 전부 신규 경로로 전환되어
+    더 이상 어떤 output_type에서도 호출되지 않는 죽은 코드다. Phase 3 완료 후
+    별도 정리 커밋으로 제거 예정(docs/10 참조) — 이번 사이클 범위에서는 의도적으로
+    남겨둔다.
+    """
     raw_response = call_gemini_api(_LEGACY_SYSTEM_PROMPT, dialogue_log, temperature=0.1)
     result = _parse_json_response(raw_response)
 
@@ -121,15 +131,18 @@ def analyze_student_log(
     self_report: dict | None = None,
     code_pair: dict | None = None,
     text_pair: dict | None = None,
+    math_pair: dict | None = None,
 ) -> dict:
     """
     학생이 AI와 나눈 대화 로그를 받아 Gemini API를 호출하고 분석 결과를 반환합니다.
 
     case["output_type"]이 None(수강/시험대비) 또는 "D"(디자인)이면 자기보고 방식으로,
     "B"(코드)면 diff/AST 비교 방식으로, "A"(텍스트)면 임베딩 유사도+문장 재구성 비율
-    방식으로 autonomy를 산출해 세 컴포넌트 균등 가중 health_score를 계산한다(각각
-    self_report/code_pair/text_pair 필수). C이면 기존 레거시 경로(Gemini가
-    health_score 직접 산출)를 그대로 사용한다.
+    방식으로, "C"(물리)면 수식 동치 판정+전개 단계 수 비율 방식으로 autonomy를
+    산출해 세 컴포넌트 균등 가중 health_score를 계산한다(각각
+    self_report/code_pair/text_pair/math_pair 필수). "C"는 최종 수식이 sympy로
+    파싱되지 않으면(한글 혼입 등) self_report 방식으로 자동 폴백하므로, "C"는
+    math_pair와 self_report를 모두 요구한다.
     """
     if not dialogue_log.strip():
         raise ValueError("입력된 대화 로그가 비어 있습니다. 분석할 로그를 입력해 주세요.")
@@ -164,6 +177,28 @@ def analyze_student_log(
         autonomy = text_compare.calculate_autonomy_score(
             text_pair["ai_text"], text_pair["student_text"]
         )
+        return _build_component_result(llm_result, autonomy)
+
+    if output_type in _MATH_COMPARE_OUTPUT_TYPES:
+        if math_pair is None:
+            raise ValueError("이 케이스는 수식 비교(math_pair) 입력이 필요합니다.")
+        if self_report is None:
+            raise ValueError(
+                "이 케이스는 수식 파싱 실패 시 자기보고로 대체하기 위해 self_report 입력도 필요합니다."
+            )
+
+        llm_result = _analyze_log_general(dialogue_log)
+        try:
+            autonomy = math_compare.calculate_autonomy_score(
+                math_pair["ai_final_formula"],
+                math_pair["student_final_formula"],
+                math_pair["ai_solution_text"],
+                math_pair["student_solution_text"],
+            )
+        except math_compare.MathParsingError:
+            autonomy = calculate_autonomy_score(
+                self_report["adoption_choice"], self_report["revision_count"]
+            )
         return _build_component_result(llm_result, autonomy)
 
     return _analyze_log_legacy(dialogue_log)
