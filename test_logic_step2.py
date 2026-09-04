@@ -1,10 +1,15 @@
 # test_logic_step2.py
 import unittest
 from unittest.mock import patch
+from utils.comparison import math_compare
 from utils.logic_step2 import analyze_student_log, calculate_health_score
 
-# 레거시 경로(C만 남음 — B는 3-b, A는 3-c에서 각자의 비교 경로로 전환) fixture
-CASE_LEGACY = {"case_id": "assignment_C", "output_type": "C"}
+# _analyze_log_legacy()로 빠지는 output_type은 3-d(A/B/C/D/None 전부 신규 경로로
+# 전환) 완료로 더 이상 실제 케이스에는 존재하지 않는다 — 아래 fixture는 실존하지
+# 않는 output_type으로 안전망(catch-all) 분기만 남아있는지 확인하는 용도다.
+# _analyze_log_legacy() 자체는 삭제하지 않고 남겨둔 죽은 코드다(docs/10 참조,
+# Phase 3 완료 후 별도 정리 커밋 예정).
+CASE_UNKNOWN_FALLBACK = {"case_id": "hypothetical", "output_type": "UNKNOWN"}
 
 # 신규 경로(D/수강/시험대비) fixture
 CASE_SELF_REPORT = {"case_id": "course", "output_type": None}
@@ -15,6 +20,9 @@ CASE_CODE = {"case_id": "assignment_B", "output_type": "B"}
 
 # 신규 경로(A=텍스트, 임베딩 유사도+문장 재구성 비율) fixture
 CASE_TEXT = {"case_id": "assignment_A", "output_type": "A"}
+
+# 신규 경로(C=물리, 수식 동치 판정+전개 단계 수 비율) fixture
+CASE_MATH = {"case_id": "assignment_C", "output_type": "C"}
 
 
 class TestLogicStep2Legacy(unittest.TestCase):
@@ -27,7 +35,7 @@ class TestLogicStep2Legacy(unittest.TestCase):
             '"target_concept": "시간 복잡도"}'
         )
 
-        result = analyze_student_log(CASE_LEGACY, "일부 로그 내용")
+        result = analyze_student_log(CASE_UNKNOWN_FALLBACK, "일부 로그 내용")
         self.assertEqual(result["health_score"], 75)
         self.assertEqual(result["risk_highlight"], "이 에러 알아서 고쳐줘")
         self.assertEqual(result["analysis_summary"], "의존형 지시어가 발견되었습니다.")
@@ -41,13 +49,13 @@ class TestLogicStep2Legacy(unittest.TestCase):
             '"analysis_summary": "의존형 지시어가 발견되었습니다."}'
         )
 
-        result = analyze_student_log(CASE_LEGACY, "일부 로그 내용")
+        result = analyze_student_log(CASE_UNKNOWN_FALLBACK, "일부 로그 내용")
         self.assertEqual(result["health_score"], 50)  # Default value
         self.assertEqual(result["target_concept"], "데이터 구조 기초")  # Default value
 
     def test_analyze_student_log_empty_input(self):
         with self.assertRaises(ValueError):
-            analyze_student_log(CASE_LEGACY, "   ")
+            analyze_student_log(CASE_UNKNOWN_FALLBACK, "   ")
 
 
 class TestLogicStep2SelfReport(unittest.TestCase):
@@ -146,6 +154,86 @@ class TestLogicStep2TextCompare(unittest.TestCase):
     def test_text_compare_path_requires_text_pair(self):
         with self.assertRaises(ValueError):
             analyze_student_log(CASE_TEXT, "일부 로그 내용", text_pair=None)
+
+
+class TestLogicStep2MathCompare(unittest.TestCase):
+    @patch('utils.logic_step2.math_compare.calculate_autonomy_score')
+    @patch('utils.logic_step2.call_gemini_api')
+    def test_math_compare_path_combines_components(self, mock_call_api, mock_autonomy):
+        mock_call_api.return_value = (
+            '{"prompt_soundness": 50, '
+            '"risk_deduction": 80, '
+            '"risk_highlight": "", '
+            '"analysis_summary": "요약", '
+            '"target_concept": "뉴턴 제2법칙"}'
+        )
+        mock_autonomy.return_value = 35
+        math_pair = {
+            "ai_final_formula": "F = m*a",
+            "student_final_formula": "F = m*a",
+            "ai_solution_text": "F = m*a",
+            "student_solution_text": "F = m*a",
+        }
+        self_report = {"adoption_choice": "일부 수정", "revision_count": 0}
+
+        result = analyze_student_log(
+            CASE_MATH, "일부 로그 내용", self_report=self_report, math_pair=math_pair
+        )
+
+        mock_autonomy.assert_called_once_with("F = m*a", "F = m*a", "F = m*a", "F = m*a")
+        self.assertEqual(result["components"], {
+            "prompt_soundness": 50,
+            "autonomy": 35,
+            "risk_deduction": 80,
+        })
+        self.assertEqual(result["health_score"], 55)  # round((50+35+80)/3) = round(55) = 55
+
+    @patch('utils.logic_step2.math_compare.calculate_autonomy_score')
+    @patch('utils.logic_step2.call_gemini_api')
+    def test_math_compare_path_falls_back_to_self_report_on_parse_failure(
+        self, mock_call_api, mock_autonomy
+    ):
+        mock_call_api.return_value = (
+            '{"prompt_soundness": 50, '
+            '"risk_deduction": 50, '
+            '"risk_highlight": "", '
+            '"analysis_summary": "요약", '
+            '"target_concept": "뉴턴 제2법칙"}'
+        )
+        mock_autonomy.side_effect = math_compare.MathParsingError("한글 혼입으로 파싱 실패")
+        math_pair = {
+            "ai_final_formula": "F = m*a",
+            "student_final_formula": "뉴턴 제2법칙에 의해 F=ma이다",
+            "ai_solution_text": "F = m*a",
+            "student_solution_text": "F = m*a",
+        }
+        self_report = {"adoption_choice": "전면 재작업", "revision_count": 3}
+
+        result = analyze_student_log(
+            CASE_MATH, "일부 로그 내용", self_report=self_report, math_pair=math_pair
+        )
+
+        # autonomy = 80(전면 재작업) + min(3*5, 20) = 95
+        self.assertEqual(result["components"]["autonomy"], 95)
+
+    def test_math_compare_path_requires_math_pair(self):
+        with self.assertRaises(ValueError):
+            analyze_student_log(
+                CASE_MATH,
+                "일부 로그 내용",
+                self_report={"adoption_choice": "일부 수정", "revision_count": 0},
+                math_pair=None,
+            )
+
+    def test_math_compare_path_requires_self_report_for_fallback(self):
+        math_pair = {
+            "ai_final_formula": "F = m*a",
+            "student_final_formula": "F = m*a",
+            "ai_solution_text": "F = m*a",
+            "student_solution_text": "F = m*a",
+        }
+        with self.assertRaises(ValueError):
+            analyze_student_log(CASE_MATH, "일부 로그 내용", self_report=None, math_pair=math_pair)
 
 
 class TestCalculateHealthScore(unittest.TestCase):
