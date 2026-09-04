@@ -4,11 +4,10 @@ from unittest.mock import patch
 from utils.comparison import math_compare
 from utils.logic_step2 import analyze_student_log, calculate_health_score
 
-# _analyze_log_legacy()로 빠지는 output_type은 3-d(A/B/C/D/None 전부 신규 경로로
-# 전환) 완료로 더 이상 실제 케이스에는 존재하지 않는다 — 아래 fixture는 실존하지
-# 않는 output_type으로 안전망(catch-all) 분기만 남아있는지 확인하는 용도다.
-# _analyze_log_legacy() 자체는 삭제하지 않고 남겨둔 죽은 코드다(docs/10 참조,
-# Phase 3 완료 후 별도 정리 커밋 예정).
+# None/"A"/"B"/"C"/"D" 다섯 값 중 무엇에도 해당하지 않는 output_type은 실제
+# 케이스에는 존재하지 않지만(3-d 완료로 전부 신규 경로로 전환됨), cases 테이블에
+# 잘못된 값이 들어간 경우를 조기에 드러내기 위해 디스패처가 명시적으로
+# ValueError를 던진다 — 아래 fixture는 그 안전망을 확인하는 용도다.
 CASE_UNKNOWN_FALLBACK = {"case_id": "hypothetical", "output_type": "UNKNOWN"}
 
 # 신규 경로(D/수강/시험대비) fixture
@@ -25,33 +24,13 @@ CASE_TEXT = {"case_id": "assignment_A", "output_type": "A"}
 CASE_MATH = {"case_id": "assignment_C", "output_type": "C"}
 
 
-class TestLogicStep2Legacy(unittest.TestCase):
-    @patch('utils.logic_step2.call_gemini_api')
-    def test_analyze_student_log_success(self, mock_call_api):
-        mock_call_api.return_value = (
-            '{"health_score": 75, '
-            '"risk_highlight": "이 에러 알아서 고쳐줘", '
-            '"analysis_summary": "의존형 지시어가 발견되었습니다.", '
-            '"target_concept": "시간 복잡도"}'
-        )
-
-        result = analyze_student_log(CASE_UNKNOWN_FALLBACK, "일부 로그 내용")
-        self.assertEqual(result["health_score"], 75)
-        self.assertEqual(result["risk_highlight"], "이 에러 알아서 고쳐줘")
-        self.assertEqual(result["analysis_summary"], "의존형 지시어가 발견되었습니다.")
-        self.assertEqual(result["target_concept"], "시간 복잡도")
-        self.assertNotIn("components", result)
-
-    @patch('utils.logic_step2.call_gemini_api')
-    def test_analyze_student_log_missing_keys(self, mock_call_api):
-        mock_call_api.return_value = (
-            '{"risk_highlight": "이 에러 알아서 고쳐줘", '
-            '"analysis_summary": "의존형 지시어가 발견되었습니다."}'
-        )
-
-        result = analyze_student_log(CASE_UNKNOWN_FALLBACK, "일부 로그 내용")
-        self.assertEqual(result["health_score"], 50)  # Default value
-        self.assertEqual(result["target_concept"], "데이터 구조 기초")  # Default value
+class TestLogicStep2UnknownOutputType(unittest.TestCase):
+    def test_unknown_output_type_raises_value_error(self):
+        # 어떤 신규 경로 분기에도 해당하지 않으면(cases 테이블 오타 등을 가정),
+        # 조용히 실패하는 대신 명시적으로 ValueError를 던져야 한다. 어느 분기에도
+        # 걸리지 않으므로 Gemini API도 호출되지 않는다(mock 불필요).
+        with self.assertRaises(ValueError):
+            analyze_student_log(CASE_UNKNOWN_FALLBACK, "일부 로그 내용")
 
     def test_analyze_student_log_empty_input(self):
         with self.assertRaises(ValueError):
