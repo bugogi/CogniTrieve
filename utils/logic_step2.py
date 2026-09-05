@@ -24,13 +24,18 @@ _TEXT_COMPARE_OUTPUT_TYPES = ("A",)
 # 문법 오류 등) 자기보고 방식(self_report)으로 자동 폴백한다.
 _MATH_COMPARE_OUTPUT_TYPES = ("C",)
 
-_GENERAL_SYSTEM_PROMPT = (
+# concept_vocabulary 힌트(있는 케이스만)를 JSON 스키마 요구 문단 직전에 끼워 넣기 위해
+# 프롬프트를 인트로/스키마 두 부분으로 나눠 관리한다.
+_GENERAL_SYSTEM_PROMPT_INTRO = (
     "당신은 학생의 메타인지를 평가하는 AI 튜터입니다. 사용자가 입력한 프롬프트 대화 로그를 분석하여 '인지적 구두쇠' 행동을 찾아내세요.\n\n"
     "'전체 다 짜줘', '알아서 완성해줘' 같은 무지성 위임 지시어에는 prompt_soundness(프롬프트 건전성 지수)를 대폭 감점하세요.\n\n"
     "왜/어떻게에 해당하는 원리탐구형 질문, 가설 제시, 방향성 토론에는 가점을 주십시오.\n\n"
     "risk_deduction은 '감점 폭'이 아니라 다른 두 지표와 동일한 방향의 0~100 점수입니다 — "
     "위험한 의존 패턴(인지적 구두쇠 행동)이 로그에 적을수록/약할수록 100에 가깝고, 많을수록/강할수록 0에 가깝습니다. "
-    "부호를 뒤집지 마세요.\n\n"
+    "부호를 뒤집지 마세요."
+)
+
+_GENERAL_SYSTEM_PROMPT_SCHEMA = (
     "분석 결과는 반드시 다음 구조의 JSON 객체로만 반환해야 합니다:\n"
     "{\n"
     '  "prompt_soundness": (0~100 사이의 정수, 프롬프트 건전성 지수),\n'
@@ -59,9 +64,37 @@ def _parse_json_response(raw_response: str) -> dict:
         raise RuntimeError(f"API 응답이 올바른 JSON 형식이 아닙니다. 원본 응답: {raw_response}") from e
 
 
-def _analyze_log_general(dialogue_log: str) -> dict:
-    """output_type이 None/D인 케이스용 신규 경로: prompt_soundness/risk_deduction만 산출."""
-    raw_response = call_gemini_api(_GENERAL_SYSTEM_PROMPT, dialogue_log, temperature=0.1)
+def _build_concept_vocabulary_hint(concept_vocabulary: list[str] | None) -> str:
+    """case의 concept_vocabulary를 참고 자료로 프롬프트에 주입할 문단을 만듭니다.
+
+    target_concept을 이 목록으로 강제하지 않는다 — 로그 내용이 목록과 맞지 않으면
+    Gemini가 목록 밖 개념을 자유롭게 고를 수 있게 한다(docs/07 Phase 6a 반영).
+    concept_vocabulary가 없거나 빈 리스트면 빈 문자열을 반환해 기존 프롬프트
+    그대로 동작하게 한다.
+    """
+    if not concept_vocabulary:
+        return ""
+
+    vocabulary_text = ", ".join(concept_vocabulary)
+    return (
+        "\n\n[참고 개념 목록] 이 학습 케이스와 관련된 핵심 개념은 다음과 같습니다: "
+        f"{vocabulary_text}.\n"
+        "target_concept을 고를 때 가능하면 이 목록 중 로그 내용에 가장 부합하는 개념을 선택하세요. "
+        "단, 목록의 어떤 개념도 로그 내용과 맞지 않는다면 목록에 없는 더 적합한 개념을 자유롭게 선택해도 됩니다.\n\n"
+    )
+
+
+def _analyze_log_general(dialogue_log: str, case: dict) -> dict:
+    """output_type이 None/D인 케이스용 신규 경로: prompt_soundness/risk_deduction만 산출.
+
+    case["concept_vocabulary"]가 있으면 JSON 스키마 요구 문단 직전에 참고 자료로
+    주입한다.
+    """
+    concept_hint = _build_concept_vocabulary_hint(case.get("concept_vocabulary"))
+    system_prompt = (
+        _GENERAL_SYSTEM_PROMPT_INTRO + "\n\n" + concept_hint + _GENERAL_SYSTEM_PROMPT_SCHEMA
+    )
+    raw_response = call_gemini_api(system_prompt, dialogue_log, temperature=0.1)
     result = _parse_json_response(raw_response)
 
     required_keys = ["prompt_soundness", "risk_deduction", "risk_highlight", "analysis_summary", "target_concept"]
@@ -113,7 +146,7 @@ def analyze_student_log(
         if self_report is None:
             raise ValueError("이 케이스는 자기보고(self_report) 입력이 필요합니다.")
 
-        llm_result = _analyze_log_general(dialogue_log)
+        llm_result = _analyze_log_general(dialogue_log, case)
         autonomy = calculate_autonomy_score(
             self_report["adoption_choice"], self_report["revision_count"]
         )
@@ -123,7 +156,7 @@ def analyze_student_log(
         if code_pair is None:
             raise ValueError("이 케이스는 코드 비교(code_pair) 입력이 필요합니다.")
 
-        llm_result = _analyze_log_general(dialogue_log)
+        llm_result = _analyze_log_general(dialogue_log, case)
         autonomy = code_compare.calculate_autonomy_score(
             code_pair["ai_code"], code_pair["student_code"]
         )
@@ -133,7 +166,7 @@ def analyze_student_log(
         if text_pair is None:
             raise ValueError("이 케이스는 텍스트 비교(text_pair) 입력이 필요합니다.")
 
-        llm_result = _analyze_log_general(dialogue_log)
+        llm_result = _analyze_log_general(dialogue_log, case)
         autonomy = text_compare.calculate_autonomy_score(
             text_pair["ai_text"], text_pair["student_text"]
         )
@@ -147,7 +180,7 @@ def analyze_student_log(
                 "이 케이스는 수식 파싱 실패 시 자기보고로 대체하기 위해 self_report 입력도 필요합니다."
             )
 
-        llm_result = _analyze_log_general(dialogue_log)
+        llm_result = _analyze_log_general(dialogue_log, case)
         try:
             autonomy = math_compare.calculate_autonomy_score(
                 math_pair["ai_final_formula"],
