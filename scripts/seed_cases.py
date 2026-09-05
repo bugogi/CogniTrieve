@@ -4,8 +4,11 @@ cases 테이블에 6개 케이스를 시딩하는 독립 실행 스크립트.
 문항/핫스팟 데이터 출처: docs/07_파이프라인_설계.md(assignment_A/B/C/D),
 docs/08-1_수강_학습유형_설계.md(course), docs/08-2_시험대비_학습유형_설계.md(exam_prep).
 
-concept_vocabulary는 docs/09에서 "Phase 6a(구현 Phase 3) 참조"로 남겨진 미확정 값이라
-Phase 1에서는 채우지 않고 NULL로 둔다(스키마상 nullable).
+concept_vocabulary는 docs/07 "개념/키워드 추출 일반화"(Phase 6a) 항목에 따라 구현
+Phase 3(2단계 로그분석 일반화) 완료 시점에 확정해 채웠다. utils/logic_step2.py의
+_analyze_log_general()이 이 값을 Gemini 프롬프트에 참고 자료로 주입한다.
+
+이미 시딩된 데이터가 있어도 upsert(case_id 기준)라 안전하게 재실행 가능하다.
 
 실행: python scripts/seed_cases.py
 """
@@ -32,7 +35,10 @@ CASES = [
         "hotspot_primary": 3,
         "hotspot_secondary": 4,
         "hotspot_tier": {"primary": "최고위험", "secondary": "위험"},
-        "concept_vocabulary": None,
+        "concept_vocabulary": [
+            "논지", "논거", "전제와결론", "반론", "문단연결", "근거제시",
+            "논리적비약", "비판적수용",
+        ],
     },
     {
         "case_id": "assignment_B",
@@ -48,7 +54,10 @@ CASES = [
         "hotspot_primary": 4,
         "hotspot_secondary": 2,
         "hotspot_tier": {"primary": "최고위험", "secondary": "위험"},
-        "concept_vocabulary": None,
+        "concept_vocabulary": [
+            "시간복잡도", "공간복잡도", "재귀", "예외처리", "변수스코프",
+            "자료구조", "아키텍처설계", "디버깅",
+        ],
     },
     {
         "case_id": "assignment_C",
@@ -64,7 +73,10 @@ CASES = [
         "hotspot_primary": 2,
         "hotspot_secondary": 4,
         "hotspot_tier": {"primary": "최고위험", "secondary": "최고위험"},
-        "concept_vocabulary": None,
+        "concept_vocabulary": [
+            "뉴턴제2법칙", "에너지보존", "운동량보존", "단위분석",
+            "차원분석", "자유낙체", "힘의평형", "마찰력",
+        ],
     },
     {
         "case_id": "assignment_D",
@@ -80,7 +92,10 @@ CASES = [
         "hotspot_primary": 2,
         "hotspot_secondary": 3,
         "hotspot_tier": {"primary": "최고위험", "secondary": "최고위험"},
-        "concept_vocabulary": None,
+        "concept_vocabulary": [
+            "브랜드컨셉", "무드보드", "컬러팔레트", "타이포그래피",
+            "톤앤매너", "비주얼아이덴티티", "타겟오디언스",
+        ],
     },
     {
         "case_id": "course",
@@ -96,7 +111,10 @@ CASES = [
         "hotspot_primary": 2,
         "hotspot_secondary": 4,
         "hotspot_tier": {"primary": "최고위험", "secondary": "최고위험"},
-        "concept_vocabulary": None,
+        "concept_vocabulary": [
+            "능동적부호화", "자기설명", "개념간연결", "재구성",
+            "인출연습", "마인드맵", "자기점검",
+        ],
     },
     {
         "case_id": "exam_prep",
@@ -112,7 +130,10 @@ CASES = [
         "hotspot_primary": 3,
         "hotspot_secondary": 4,
         "hotspot_tier": {"primary": "최고위험", "secondary": "최고위험"},
-        "concept_vocabulary": None,
+        "concept_vocabulary": [
+            "인출연습", "오류기반재학습", "변형문제적용", "실전시뮬레이션",
+            "시간배분", "오답패턴분석", "재시도",
+        ],
     },
 ]
 
