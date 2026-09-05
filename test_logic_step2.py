@@ -215,6 +215,73 @@ class TestLogicStep2MathCompare(unittest.TestCase):
             analyze_student_log(CASE_MATH, "일부 로그 내용", self_report=None, math_pair=math_pair)
 
 
+class TestConceptVocabularyHint(unittest.TestCase):
+    @patch('utils.logic_step2.call_gemini_api')
+    def test_vocabulary_is_injected_into_prompt_when_present(self, mock_call_api):
+        mock_call_api.return_value = (
+            '{"prompt_soundness": 50, "risk_deduction": 50, "risk_highlight": "", '
+            '"analysis_summary": "요약", "target_concept": "재귀"}'
+        )
+        case_with_vocab = {
+            "case_id": "assignment_B",
+            "output_type": "B",
+            "concept_vocabulary": ["시간복잡도", "재귀", "디버깅"],
+        }
+
+        analyze_student_log(
+            case_with_vocab,
+            "일부 로그 내용",
+            code_pair={"ai_code": "pass", "student_code": "pass"},
+        )
+
+        system_prompt = mock_call_api.call_args[0][0]
+        self.assertIn("[참고 개념 목록]", system_prompt)
+        self.assertIn("시간복잡도, 재귀, 디버깅", system_prompt)
+        # 힌트가 인트로 문단 뒤, JSON 스키마 요구 문단보다 앞에 와야 한다.
+        self.assertLess(
+            system_prompt.index("[참고 개념 목록]"),
+            system_prompt.index("분석 결과는 반드시 다음 구조의 JSON 객체로만 반환해야 합니다"),
+        )
+
+    @patch('utils.logic_step2.call_gemini_api')
+    def test_vocabulary_hint_skipped_when_absent(self, mock_call_api):
+        mock_call_api.return_value = (
+            '{"prompt_soundness": 50, "risk_deduction": 50, "risk_highlight": "", '
+            '"analysis_summary": "요약", "target_concept": "재귀"}'
+        )
+        case_without_vocab = {"case_id": "assignment_B", "output_type": "B"}
+
+        analyze_student_log(
+            case_without_vocab,
+            "일부 로그 내용",
+            code_pair={"ai_code": "pass", "student_code": "pass"},
+        )
+
+        system_prompt = mock_call_api.call_args[0][0]
+        self.assertNotIn("[참고 개념 목록]", system_prompt)
+
+    @patch('utils.logic_step2.call_gemini_api')
+    def test_vocabulary_hint_skipped_when_empty_list(self, mock_call_api):
+        mock_call_api.return_value = (
+            '{"prompt_soundness": 50, "risk_deduction": 50, "risk_highlight": "", '
+            '"analysis_summary": "요약", "target_concept": "재귀"}'
+        )
+        case_with_empty_vocab = {
+            "case_id": "assignment_B",
+            "output_type": "B",
+            "concept_vocabulary": [],
+        }
+
+        analyze_student_log(
+            case_with_empty_vocab,
+            "일부 로그 내용",
+            code_pair={"ai_code": "pass", "student_code": "pass"},
+        )
+
+        system_prompt = mock_call_api.call_args[0][0]
+        self.assertNotIn("[참고 개념 목록]", system_prompt)
+
+
 class TestCalculateHealthScore(unittest.TestCase):
     def test_equal_weighting_matches_spec_example(self):
         # AI_INSTRUCTIONS.md 예시: health_score:35 = (40+30+35)/3
