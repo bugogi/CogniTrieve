@@ -169,6 +169,9 @@ if not step2_done or step2_result is None:
 target_concept = step2_result.get('target_concept', '컴퓨터공학 기초')
 risk_highlight = step2_result.get('risk_highlight', '')
 
+# 케이스별 quiz_type 허용 목록/폴백 판별에 필요한 case 정보
+case = st.session_state["case"]
+
 # 상단 핵심 개념 정보 알림
 st.markdown(f"""
 <div class='concept-banner'>
@@ -200,7 +203,7 @@ if st.session_state['last_target_concept'] != target_concept:
 if st.session_state['step3_quiz'] is None:
     with st.spinner("Gemini AI가 당신의 메타인지를 도울 서술형 퀴즈를 생성하고 있습니다..."):
         try:
-            quiz_data = generate_adaptive_quiz(target_concept, risk_highlight)
+            quiz_data = generate_adaptive_quiz(target_concept, risk_highlight, case)
             st.session_state['step3_quiz'] = quiz_data
         except Exception as e:
             st.error(f"퀴즈 생성 중 오류 발생: {str(e)}")
