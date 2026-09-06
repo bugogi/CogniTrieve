@@ -7,6 +7,11 @@ docs/08-1_수강_학습유형_설계.md(course), docs/08-2_시험대비_학습�
 concept_vocabulary는 docs/07 "개념/키워드 추출 일반화"(Phase 6a) 항목에 따라 구현
 Phase 3(2단계 로그분석 일반화) 완료 시점에 확정해 채웠다. utils/logic_step2.py의
 _analyze_log_general()이 이 값을 Gemini 프롬프트에 참고 자료로 주입한다.
+단, course/exam_prep은 산출물 유형이 고정된 assignment_A/B/C/D와 달리 과목 자체가
+무한히 다양해(통계학/화학/역사 등) 고정 용어 사전이 성립하지 않음을 실사용
+테스트에서 확인해(2026-08), 두 케이스만 의도적으로 None으로 되돌렸다(docs/10
+참조). logic_step2.py/logic_step3.py의 기존 방어 로직(값이 없으면 로그/문항
+내용 기반으로 처리)이 이 경우를 그대로 처리한다.
 
 이미 시딩된 데이터가 있어도 upsert(case_id 기준)라 안전하게 재실행 가능하다.
 
@@ -111,10 +116,10 @@ CASES = [
         "hotspot_primary": 2,
         "hotspot_secondary": 4,
         "hotspot_tier": {"primary": "최고위험", "secondary": "최고위험"},
-        "concept_vocabulary": [
-            "능동적부호화", "자기설명", "개념간연결", "재구성",
-            "인출연습", "마인드맵", "자기점검",
-        ],
+        # 과목이 무한히 다양해(통계학/화학/역사 등) 고정 용어 사전이 성립하지
+        # 않음을 실사용 테스트에서 확인(2026-08) — 의도적으로 비워둠.
+        # docs/10 구현 Phase 3 concept_vocabulary 항목 메모 참조.
+        "concept_vocabulary": None,
     },
     {
         "case_id": "exam_prep",
@@ -130,10 +135,8 @@ CASES = [
         "hotspot_primary": 3,
         "hotspot_secondary": 4,
         "hotspot_tier": {"primary": "최고위험", "secondary": "최고위험"},
-        "concept_vocabulary": [
-            "인출연습", "오류기반재학습", "변형문제적용", "실전시뮬레이션",
-            "시간배분", "오답패턴분석", "재시도",
-        ],
+        # course와 동일한 이유로 의도적으로 비워둠(2026-08, docs/10 참조).
+        "concept_vocabulary": None,
     },
 ]
 
