@@ -4,9 +4,16 @@ import os
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
+from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
 load_dotenv()
+
+UNIQUE_VIOLATION_CODE = "23505"
+
+
+class DuplicateSubmissionError(Exception):
+    """해당 세션에 대해 이미 저장된 응답이 있을 때(유니크 제약 위반 시) 발생."""
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -65,19 +72,26 @@ def save_step1_response(
     total_score: int,
     persona: str,
 ) -> None:
-    get_client().table("step1_responses").insert(
-        {
-            "session_id": session_id,
-            "case_id": case_id,
-            "q1": q1,
-            "q2": q2,
-            "q3": q3,
-            "q4": q4,
-            "q5": q5,
-            "total_score": total_score,
-            "persona": persona,
-        }
-    ).execute()
+    try:
+        get_client().table("step1_responses").insert(
+            {
+                "session_id": session_id,
+                "case_id": case_id,
+                "q1": q1,
+                "q2": q2,
+                "q3": q3,
+                "q4": q4,
+                "q5": q5,
+                "total_score": total_score,
+                "persona": persona,
+            }
+        ).execute()
+    except APIError as e:
+        if e.code == UNIQUE_VIOLATION_CODE:
+            raise DuplicateSubmissionError(
+                "이미 해당 세션의 1단계 응답이 저장되어 있습니다."
+            ) from e
+        raise
 
 
 def save_step2_response(
@@ -88,16 +102,23 @@ def save_step2_response(
     risk_highlight: str,
     analysis_summary: str,
 ) -> None:
-    get_client().table("step2_responses").insert(
-        {
-            "session_id": session_id,
-            "case_id": case_id,
-            "health_score": health_score,
-            "components": components,
-            "risk_highlight": risk_highlight,
-            "analysis_summary": analysis_summary,
-        }
-    ).execute()
+    try:
+        get_client().table("step2_responses").insert(
+            {
+                "session_id": session_id,
+                "case_id": case_id,
+                "health_score": health_score,
+                "components": components,
+                "risk_highlight": risk_highlight,
+                "analysis_summary": analysis_summary,
+            }
+        ).execute()
+    except APIError as e:
+        if e.code == UNIQUE_VIOLATION_CODE:
+            raise DuplicateSubmissionError(
+                "이미 해당 세션의 2단계 응답이 저장되어 있습니다."
+            ) from e
+        raise
 
 
 def save_step3_response(
