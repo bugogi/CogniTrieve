@@ -189,6 +189,9 @@ if 'step3_submitted' not in st.session_state:
 if 'step3_is_correct' not in st.session_state:
     st.session_state['step3_is_correct'] = False
 
+if 'step3_attempt' not in st.session_state:
+    st.session_state['step3_attempt'] = 0
+
 if 'last_target_concept' not in st.session_state:
     st.session_state['last_target_concept'] = target_concept
 
@@ -221,17 +224,23 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # 답변 입력 양식 (st.text_input 사용)
-# 상태를 일관되게 관리하기 위해 default 값을 세션에서 가져올 수도 있으나 단순한 텍스트 입력으로 구성
+# key에 step3_attempt를 포함시켜, 새 퀴즈가 출제될 때마다 입력창이 빈 상태로 다시 그려지게 한다
 student_answer = st.text_input(
     "여기에 퀴즈에 대한 정답이나 설명을 작성하세요:",
     placeholder="예시) 포인터는 메모리 공간의 실제 주소값을 담고 있어 직접 제어가 가능합니다.",
-    key="student_answer_widget"
+    key=f"student_answer_widget_{st.session_state['step3_attempt']}",
+    disabled=st.session_state['step3_submitted'],
 )
 
 col_submit, col_reset, _ = st.columns([2, 1, 3])
 
 with col_submit:
-    if st.button("🚀 정답 검증 및 제출", type="primary", use_container_width=True):
+    if st.button(
+        "🚀 정답 검증 및 제출",
+        type="primary",
+        use_container_width=True,
+        disabled=st.session_state['step3_submitted'],
+    ):
         if not student_answer.strip():
             st.warning("답변을 먼저 입력해 주세요!")
         else:
@@ -267,6 +276,7 @@ with col_reset:
         st.session_state['step3_quiz'] = None
         st.session_state['step3_submitted'] = False
         st.session_state['step3_is_correct'] = False
+        st.session_state['step3_attempt'] += 1
         st.rerun()
 
 # 검증 피드백 출력

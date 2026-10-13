@@ -4,7 +4,7 @@ import os
 
 # root 디렉토리를 path에 추가하여 utils 패키지가 정상 임포트되도록 보장
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.db_handler import save_step1_response
+from utils.db_handler import DuplicateSubmissionError, save_step1_response
 from utils.logic_step1 import calculate_persona
 
 # 페이지 설정
@@ -125,55 +125,65 @@ questions = [
 # 세션 상태 초기화 (결과를 유지하기 위함)
 if 'step1_results' not in st.session_state:
     st.session_state['step1_results'] = None
+if 'step1_done' not in st.session_state:
+    st.session_state['step1_done'] = False
 
-# 설문 폼 구성
-with st.form("diagnosis_form"):
-    answers = {}
-    
-    for q in questions:
-        st.markdown(f"<div class='question-box'><div class='question-text'>{q['text']}</div>", unsafe_allow_html=True)
-        # 기본값을 '3점 (보통이다)'으로 설정하여 편안하게 선택할 수 있게 함
-        answers[q['id']] = st.radio(
-            label=q['text'],
-            options=list(options_map.keys()),
-            index=2,
-            horizontal=True,
-            key=f"widget_{q['id']}",
-            label_visibility="collapsed"
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-    submit_button = st.form_submit_button("🩺 사전 진단 결과 분석하기", use_container_width=True)
+# 세션당 1회 제출: 이미 저장이 확정된 경우 폼을 숨기고 읽기 전용 안내만 노출
+if not st.session_state['step1_done']:
+    with st.form("diagnosis_form"):
+        answers = {}
 
-# 폼 제출 시 비즈니스 로직 수행
-if submit_button:
-    # 텍스트 형태의 선택지를 정수 점수로 변환
-    q1_score = options_map[answers['q1']]
-    q2_score = options_map[answers['q2']]
-    q3_score = options_map[answers['q3']]
-    q4_score = options_map[answers['q4']]
-    q5_score = options_map[answers['q5']]
-    
-    # logic_step1 모듈을 통해 결과 계산
-    diag_result = calculate_persona(case, q1_score, q2_score, q3_score, q4_score, q5_score)
-    
-    # 세션 상태에 저장하여 다음 페이지 및 파이프라인에서 유지
-    st.session_state['step1_done'] = True
-    st.session_state['step1_persona'] = diag_result['persona']
-    st.session_state['step1_total_score'] = diag_result['total_score']
-    st.session_state['step1_results'] = diag_result
+        for q in questions:
+            st.markdown(f"<div class='question-box'><div class='question-text'>{q['text']}</div>", unsafe_allow_html=True)
+            # 기본값을 '3점 (보통이다)'으로 설정하여 편안하게 선택할 수 있게 함
+            answers[q['id']] = st.radio(
+                label=q['text'],
+                options=list(options_map.keys()),
+                index=2,
+                horizontal=True,
+                key=f"widget_{q['id']}",
+                label_visibility="collapsed"
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
 
-    # Supabase에 응답 영구 저장
-    try:
-        save_step1_response(
-            session_id=st.session_state['session_id'],
-            case_id=st.session_state['case_id'],
-            q1=q1_score, q2=q2_score, q3=q3_score, q4=q4_score, q5=q5_score,
-            total_score=diag_result['total_score'],
-            persona=diag_result['persona'],
-        )
-    except Exception as e:
-        st.error(f"응답 저장 중 오류가 발생했습니다(진단 결과는 정상 표시됩니다): {e}")
+        submit_button = st.form_submit_button("🩺 사전 진단 결과 분석하기", use_container_width=True)
+
+    # 폼 제출 시 비즈니스 로직 수행
+    if submit_button:
+        # 텍스트 형태의 선택지를 정수 점수로 변환
+        q1_score = options_map[answers['q1']]
+        q2_score = options_map[answers['q2']]
+        q3_score = options_map[answers['q3']]
+        q4_score = options_map[answers['q4']]
+        q5_score = options_map[answers['q5']]
+
+        # logic_step1 모듈을 통해 결과 계산
+        diag_result = calculate_persona(case, q1_score, q2_score, q3_score, q4_score, q5_score)
+
+        # Supabase에 먼저 영구 저장을 시도하고, 성공(또는 이미 제출됨)한 뒤에만 잠근다
+        saved_ok = False
+        try:
+            save_step1_response(
+                session_id=st.session_state['session_id'],
+                case_id=st.session_state['case_id'],
+                q1=q1_score, q2=q2_score, q3=q3_score, q4=q4_score, q5=q5_score,
+                total_score=diag_result['total_score'],
+                persona=diag_result['persona'],
+            )
+            saved_ok = True
+        except DuplicateSubmissionError:
+            saved_ok = True
+        except Exception as e:
+            st.error(f"응답 저장에 실패했습니다. 다시 시도해 주세요: {e}")
+
+        if saved_ok:
+            st.session_state['step1_done'] = True
+            st.session_state['step1_persona'] = diag_result['persona']
+            st.session_state['step1_total_score'] = diag_result['total_score']
+            st.session_state['step1_results'] = diag_result
+            st.rerun()
+else:
+    st.info("✅ 이미 제출했습니다. 다시 하려면 홈에서 '처음부터 다시 시작'을 누르세요.")
 
 # 결과 렌더링
 if st.session_state['step1_results'] is not None:

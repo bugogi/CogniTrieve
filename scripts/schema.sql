@@ -32,6 +32,8 @@ create table if not exists step1_responses (
   persona text,
   created_at timestamptz default now()
 );
+-- 재제출 차단: 세션당 1단계 응답은 1건만 허용
+create unique index if not exists step1_responses_session_id_key on step1_responses(session_id);
 
 create table if not exists step2_responses (
   id bigint generated always as identity primary key,
@@ -43,6 +45,9 @@ create table if not exists step2_responses (
   analysis_summary text,
   created_at timestamptz default now()
 );
+-- 재제출 차단: 세션당 2단계 응답은 1건만 허용
+create unique index if not exists step2_responses_session_id_key on step2_responses(session_id);
+-- step3_responses는 세션당 여러 row(퀴즈별 제출)를 허용하므로 유니크 제약을 걸지 않는다.
 
 create table if not exists step3_responses (
   id bigint generated always as identity primary key,

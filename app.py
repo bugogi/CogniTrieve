@@ -165,7 +165,8 @@ if not st.session_state["consented"]:
         use_container_width=True,
         disabled=not (agree and selected_case_id),
     ):
-        anon_id = str(uuid.uuid4())
+        # 재시작("처음부터 다시 시작") 이후에는 anon_id를 유지하고, 최초 방문 시에만 새로 발급한다
+        anon_id = st.session_state.get("anon_id") or str(uuid.uuid4())
         try:
             session_id = create_session(anon_id, selected_case_id)
         except Exception as e:
@@ -262,3 +263,29 @@ st.sidebar.info(
     "2. 🔍 로그분석\n"
     "3. 🎯 전이검증"
 )
+
+# "처음부터 다시 시작" — anon_id는 유지하고 나머지 세션 상태를 모두 초기화해
+# 새 케이스를 선택하고 새 session_id를 발급받는다(이전 세션은 DB에 그대로 남긴다).
+st.sidebar.markdown("---")
+if not st.session_state.get("confirm_restart"):
+    if st.sidebar.button("🔁 처음부터 다시 시작", use_container_width=True):
+        st.session_state["confirm_restart"] = True
+        st.rerun()
+else:
+    st.sidebar.warning(
+        "정말로 처음부터 다시 시작하시겠습니까? 지금까지의 진행 상태(1~3단계 결과, "
+        "획득 배지)는 화면에서 사라집니다. 이전 세션의 응답은 DB에 그대로 보존됩니다."
+    )
+    confirm_col1, confirm_col2 = st.sidebar.columns(2)
+    with confirm_col1:
+        if st.button("예, 초기화합니다", use_container_width=True, type="primary"):
+            kept_anon_id = st.session_state.get("anon_id")
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            if kept_anon_id:
+                st.session_state["anon_id"] = kept_anon_id
+            st.rerun()
+    with confirm_col2:
+        if st.button("아니오", use_container_width=True):
+            st.session_state["confirm_restart"] = False
+            st.rerun()
