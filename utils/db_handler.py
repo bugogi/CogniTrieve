@@ -141,3 +141,52 @@ def save_step3_response(
             "matched_keyword": matched_keyword,
         }
     ).execute()
+
+
+# ---------------------------------------------------------------------------
+# 관리자 뷰 전용 읽기(pages/9_관리자.py) — 쓰기 없음
+# ---------------------------------------------------------------------------
+
+ADMIN_PAGE_SIZE = 1000  # PostgREST 기본 응답 상한과 동일
+
+# 관리자 뷰가 실제로 필요한 컬럼만 조회한다. step2의 risk_highlight/analysis_summary는
+# 학생 로그에서 뽑은 문장이라 의도적으로 제외한다. step3의 student_answer는 글자 수
+# 산출용으로만 가져오며, utils.admin_metrics.build_frames()에서 즉시 제거된다.
+ADMIN_SELECT_COLUMNS = {
+    "cases": ("case_id, learning_type, output_type", "case_id"),
+    "sessions": ("session_id, anon_id, case_id, created_at", "session_id"),
+    "step1_responses": ("id, session_id, case_id, total_score, persona, created_at", "id"),
+    "step2_responses": ("id, session_id, case_id, health_score, created_at", "id"),
+    "step3_responses": (
+        "id, session_id, case_id, quiz_type, student_answer, is_correct, matched_keyword, created_at",
+        "id",
+    ),
+}
+
+
+def _fetch_all(table: str, columns: str, order_by: str) -> list[dict]:
+    """응답 상한(1000행)을 넘어도 끝까지 읽도록 range로 페이지를 넘기며 조회합니다."""
+    rows: list[dict] = []
+    start = 0
+    while True:
+        response = (
+            get_client()
+            .table(table)
+            .select(columns)
+            .order(order_by)
+            .range(start, start + ADMIN_PAGE_SIZE - 1)
+            .execute()
+        )
+        batch = response.data or []
+        rows.extend(batch)
+        if len(batch) < ADMIN_PAGE_SIZE:
+            return rows
+        start += ADMIN_PAGE_SIZE
+
+
+def fetch_admin_rows() -> dict[str, list[dict]]:
+    """관리자 뷰 집계용 원본 row를 테이블별로 조회합니다(읽기 전용)."""
+    return {
+        table: _fetch_all(table, columns, order_by)
+        for table, (columns, order_by) in ADMIN_SELECT_COLUMNS.items()
+    }
