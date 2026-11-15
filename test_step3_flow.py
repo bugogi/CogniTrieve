@@ -17,6 +17,7 @@ SAVE = "utils.db_handler.save_step3_response"
 SUBMIT_LABEL = "🚀 정답 검증 및 제출"
 NEW_QUIZ_LABEL = "🔄 새로운 퀴즈 출제"
 FINISH_LABEL = "🏁 여기서 마무리"
+REPORT_LABEL = "📄 결과 리포트 보기"
 
 CASE = {
     "case_id": "course",
@@ -162,6 +163,7 @@ class TestStep3Completion(unittest.TestCase):
             self.assertTrue(button(at, NEW_QUIZ_LABEL).disabled)
             self.assertTrue(button(at, FINISH_LABEL).disabled)
             self.assertTrue(any("3단계를 완료했습니다" in s.value for s in at.success))
+            self.assertFalse(button(at, REPORT_LABEL).disabled)
 
     def test_locked_new_quiz_click_is_ignored(self):
         with patch(SAVE):
@@ -197,6 +199,13 @@ class TestStep3Completion(unittest.TestCase):
             self.assertTrue(button(at, NEW_QUIZ_LABEL).disabled)
             self.assertTrue(button(at, FINISH_LABEL).disabled)
             self.assertTrue(any("3단계를 마무리했습니다" in i.value for i in at.info))
+            self.assertFalse(button(at, REPORT_LABEL).disabled)
+
+    def test_report_button_hidden_before_completion(self):
+        with patch(SAVE):
+            at = make_app().run()
+            submit(at, WRONG)
+            self.assertNotIn(REPORT_LABEL, [b.label for b in at.button])
 
     def test_save_failure_does_not_count_toward_finish(self):
         with patch(SAVE, side_effect=RuntimeError("db down")):

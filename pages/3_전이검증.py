@@ -347,6 +347,8 @@ if st.session_state['step3_done']:
         st.success("✅ 3단계를 완료했습니다! 정답을 맞혀 전이 검증을 통과했습니다.")
     else:
         st.info("✅ 3단계를 마무리했습니다. 지금까지 제출한 결과가 저장되었습니다.")
+    if st.button("📄 결과 리포트 보기", type="primary"):
+        st.switch_page("pages/4_결과리포트.py")
 
 # 검증 피드백 출력
 if st.session_state['step3_submitted']:
