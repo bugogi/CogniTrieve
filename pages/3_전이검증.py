@@ -5,7 +5,14 @@ import os
 # root 디렉토리를 path에 추가하여 utils 패키지가 정상 임포트되도록 보장
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.db_handler import save_step3_response
-from utils.logic_step3 import find_matched_keyword, generate_adaptive_quiz, verify_answer
+from utils.logic_step3 import (
+    STEP3_DONE_CORRECT,
+    STEP3_DONE_FINISHED,
+    find_matched_keyword,
+    generate_adaptive_quiz,
+    is_new_quiz_locked,
+    verify_answer,
+)
 
 # 페이지 설정
 st.set_page_config(
@@ -199,6 +206,18 @@ if 'last_target_concept' not in st.session_state:
 if 'step3_celebrate' not in st.session_state:
     st.session_state['step3_celebrate'] = False
 
+# 3단계(세션 단위) 완료 상태. 퀴즈 단위 상태(step3_submitted/step3_is_correct)와 분리해,
+# 정답 또는 "여기서 마무리" 시 True가 되고 결과 리포트 진입 조건으로 쓰인다.
+if 'step3_done' not in st.session_state:
+    st.session_state['step3_done'] = False
+
+if 'step3_done_reason' not in st.session_state:
+    st.session_state['step3_done_reason'] = None
+
+# 저장에 성공한 제출 이력(결과 리포트용). 답변 원문은 담지 않는다.
+if 'step3_history' not in st.session_state:
+    st.session_state['step3_history'] = []
+
 # 2단계 핵심 개념이 이전 문제 생성 시점과 달라졌다면 퀴즈 초기화
 if st.session_state['last_target_concept'] != target_concept:
     st.session_state['step3_quiz'] = None
@@ -222,8 +241,11 @@ if st.session_state['step3_celebrate']:
     st.session_state['step3_celebrate'] = False
     st.balloons()
 
-# 퀴즈 1개당 제출 1회: 저장에 성공한 제출이 있으면 이 퀴즈는 잠긴다
-quiz_locked = st.session_state['step3_submitted']
+# 퀴즈 1개당 제출 1회: 저장에 성공한 제출이 있거나 3단계가 완료되면 이 퀴즈는 잠긴다
+quiz_locked = st.session_state['step3_submitted'] or st.session_state['step3_done']
+new_quiz_locked = is_new_quiz_locked(st.session_state['step3_done_reason'])
+# "여기서 마무리"는 저장된 제출이 1건 이상 있어야 열린다(제출 0건으로 완료 처리 방지)
+finish_locked = st.session_state['step3_done'] or not st.session_state['step3_history']
 
 # 퀴즈 UI 렌더링
 st.markdown(f"""
@@ -243,7 +265,7 @@ student_answer = st.text_input(
     disabled=quiz_locked,
 )
 
-col_submit, col_reset, _ = st.columns([2, 1, 3])
+col_submit, col_reset, col_finish, _ = st.columns([2, 1, 1, 2])
 
 with col_submit:
     # 잠긴 상태에서는 클릭이 들어와도 처리하지 않는다(disabled 표시와 별개의 서버 측 방어)
@@ -277,25 +299,54 @@ with col_submit:
             else:
                 st.session_state['step3_submitted'] = True
                 st.session_state['step3_is_correct'] = is_correct
+                st.session_state['step3_history'].append(
+                    {"quiz_type": quiz['quiz_type'], "is_correct": is_correct}
+                )
 
                 # 정답일 경우 세션 리스트에 키워드를 영구 저장 및 축하 풍선(다음 실행에서 표시)
+                # + 3단계 완료 처리
                 if is_correct:
                     st.session_state['step3_celebrate'] = True
                     if target_concept not in st.session_state['acquired_keywords']:
                         st.session_state['acquired_keywords'].append(target_concept)
+                    st.session_state['step3_done'] = True
+                    st.session_state['step3_done_reason'] = STEP3_DONE_CORRECT
 
                 # 잠금 상태가 이번 제출 직후 화면에 바로 반영되도록 다시 그린다
                 # (없으면 입력창이 열린 채로 남아, 다시 제출한 답변이 채점 없이 사라진다)
                 st.rerun()
 
 with col_reset:
-    if st.button("🔄 새로운 퀴즈 출제", use_container_width=True):
+    # 잠금 조건(정책)은 utils.logic_step3.is_new_quiz_locked 한 곳에서만 정한다
+    if st.button(
+        "🔄 새로운 퀴즈 출제",
+        use_container_width=True,
+        disabled=new_quiz_locked,
+    ) and not new_quiz_locked:
         # 퀴즈 관련 상태를 모두 초기화하여 새로운 퀴즈를 강제 생성하도록 유도
         st.session_state['step3_quiz'] = None
         st.session_state['step3_submitted'] = False
         st.session_state['step3_is_correct'] = False
         st.session_state['step3_attempt'] += 1
         st.rerun()
+
+with col_finish:
+    if st.button(
+        "🏁 여기서 마무리",
+        use_container_width=True,
+        disabled=finish_locked,
+        help="정답을 맞히지 못했더라도, 지금까지 제출한 결과로 3단계를 마치고 결과 리포트로 넘어갑니다.",
+    ) and not finish_locked:
+        st.session_state['step3_done'] = True
+        st.session_state['step3_done_reason'] = STEP3_DONE_FINISHED
+        st.rerun()
+
+# 3단계 완료 안내
+if st.session_state['step3_done']:
+    if st.session_state['step3_done_reason'] == STEP3_DONE_CORRECT:
+        st.success("✅ 3단계를 완료했습니다! 정답을 맞혀 전이 검증을 통과했습니다.")
+    else:
+        st.info("✅ 3단계를 마무리했습니다. 지금까지 제출한 결과가 저장되었습니다.")
 
 # 검증 피드백 출력
 if st.session_state['step3_submitted']:
@@ -352,7 +403,10 @@ if st.session_state.get('step1_done'):
 if st.session_state.get('step2_done'):
     st.sidebar.success(f"🔍 2단계: 로그분석 완료 (`{st.session_state['step2_result']['health_score']} 점`)")
 
-st.sidebar.info("🎯 3단계: 적응형 전이 검증 진행 중")
+if st.session_state['step3_done']:
+    st.sidebar.success("🎯 3단계: 전이 검증 완료")
+else:
+    st.sidebar.info("🎯 3단계: 적응형 전이 검증 진행 중")
 
 # 획득 배지 정보 사이드바 요약
 if st.session_state['acquired_keywords']:

@@ -196,3 +196,19 @@ def verify_answer(student_answer: str, expected_keywords: list) -> bool:
     학생의 답변이 예상 키워드(expected_keywords) 중 하나라도 포함하고 있는지 검증합니다.
     """
     return find_matched_keyword(student_answer, expected_keywords) is not None
+
+
+# 3단계 완료 사유(docs/07 3단계 "제출·완료 흐름"). 정답 제출이 저장되면 CORRECT,
+# 저장된 제출이 1건 이상인 상태에서 학생이 "여기서 마무리"를 고르면 FINISHED.
+STEP3_DONE_CORRECT = "correct"
+STEP3_DONE_FINISHED = "finished"
+
+
+def is_new_quiz_locked(done_reason: str | None) -> bool:
+    """3단계 완료 후 '새로운 퀴즈 출제'를 잠글지 결정합니다.
+
+    현재 정책: 완료 사유와 무관하게(정답·마무리 모두) 잠근다. 나중에 "정답 후에도 새
+    퀴즈 허용"으로 바꾸려면 이 함수만 `return done_reason == STEP3_DONE_FINISHED`로
+    고치면 된다(완료 사유를 따로 저장해 두는 이유).
+    """
+    return done_reason is not None

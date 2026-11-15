@@ -16,6 +16,7 @@ SAVE = "utils.db_handler.save_step3_response"
 
 SUBMIT_LABEL = "🚀 정답 검증 및 제출"
 NEW_QUIZ_LABEL = "🔄 새로운 퀴즈 출제"
+FINISH_LABEL = "🏁 여기서 마무리"
 
 CASE = {
     "case_id": "course",
@@ -140,6 +141,69 @@ class TestSubmitLock(unittest.TestCase):
             self.assertEqual(at.session_state["step3_attempt"], 1)
             self.assertFalse(answer_box(at).disabled)
             self.assertEqual(answer_box(at).value, "")
+
+
+class TestStep3Completion(unittest.TestCase):
+    def test_correct_answer_completes_step3_and_locks_everything(self):
+        with patch(SAVE) as save:
+            at = make_app().run()
+            submit(at, RIGHT)
+            self.assertEqual(len(at.exception), 0)
+            self.assertTrue(save.call_args.kwargs["is_correct"])
+            self.assertTrue(at.session_state["step3_done"])
+            self.assertEqual(at.session_state["step3_done_reason"], "correct")
+            self.assertEqual(at.session_state["acquired_keywords"], ["포인터"])
+            self.assertEqual(
+                at.session_state["step3_history"],
+                [{"quiz_type": QUIZ["quiz_type"], "is_correct": True}],
+            )
+            self.assertTrue(answer_box(at).disabled)
+            self.assertTrue(button(at, SUBMIT_LABEL).disabled)
+            self.assertTrue(button(at, NEW_QUIZ_LABEL).disabled)
+            self.assertTrue(button(at, FINISH_LABEL).disabled)
+            self.assertTrue(any("3단계를 완료했습니다" in s.value for s in at.success))
+
+    def test_locked_new_quiz_click_is_ignored(self):
+        with patch(SAVE):
+            at = make_app().run()
+            submit(at, RIGHT)
+            button(at, NEW_QUIZ_LABEL).click()
+            at.run()
+            self.assertEqual(at.session_state["step3_attempt"], 0)
+            self.assertEqual(at.session_state["step3_quiz"], QUIZ)
+
+    def test_finish_disabled_until_a_submission_is_saved(self):
+        with patch(SAVE):
+            at = make_app().run()
+            self.assertTrue(button(at, FINISH_LABEL).disabled)
+            button(at, FINISH_LABEL).click()
+            at.run()
+            self.assertFalse(at.session_state["step3_done"])
+
+            submit(at, WRONG)
+            self.assertFalse(button(at, FINISH_LABEL).disabled)
+            self.assertFalse(button(at, NEW_QUIZ_LABEL).disabled)
+
+    def test_finish_after_wrong_answer_completes_and_locks(self):
+        with patch(SAVE):
+            at = make_app().run()
+            submit(at, WRONG)
+            button(at, FINISH_LABEL).click()
+            at.run()
+            self.assertEqual(len(at.exception), 0)
+            self.assertTrue(at.session_state["step3_done"])
+            self.assertEqual(at.session_state["step3_done_reason"], "finished")
+            self.assertEqual(at.session_state["acquired_keywords"], [])
+            self.assertTrue(button(at, NEW_QUIZ_LABEL).disabled)
+            self.assertTrue(button(at, FINISH_LABEL).disabled)
+            self.assertTrue(any("3단계를 마무리했습니다" in i.value for i in at.info))
+
+    def test_save_failure_does_not_count_toward_finish(self):
+        with patch(SAVE, side_effect=RuntimeError("db down")):
+            at = make_app().run()
+            submit(at, WRONG)
+            self.assertEqual(at.session_state["step3_history"], [])
+            self.assertTrue(button(at, FINISH_LABEL).disabled)
 
 
 if __name__ == "__main__":

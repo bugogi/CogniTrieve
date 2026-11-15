@@ -1,7 +1,13 @@
 # test_logic_step3.py
 import unittest
 from unittest.mock import patch
-from utils.logic_step3 import generate_adaptive_quiz, verify_answer
+from utils.logic_step3 import (
+    STEP3_DONE_CORRECT,
+    STEP3_DONE_FINISHED,
+    generate_adaptive_quiz,
+    is_new_quiz_locked,
+    verify_answer,
+)
 
 CASE_B = {"case_id": "assignment_B", "learning_type": "과제", "output_type": "B", "concept_vocabulary": ["재귀", "시간복잡도"]}
 CASE_A = {"case_id": "assignment_A", "learning_type": "과제", "output_type": "A", "concept_vocabulary": ["논지", "논거"]}
@@ -136,6 +142,20 @@ class TestLogicStep3(unittest.TestCase):
         self.assertFalse(verify_answer(None, ["키워드"]))
         self.assertFalse(verify_answer("답변", None))
         self.assertFalse(verify_answer("   ", ["   "]))
+
+
+class TestNewQuizLockPolicy(unittest.TestCase):
+    """정답·마무리 후 '새 퀴즈 출제' 잠금 정책(docs/07 3단계 "제출·완료 흐름")."""
+
+    def test_not_locked_before_completion(self):
+        self.assertFalse(is_new_quiz_locked(None))
+
+    def test_locked_after_correct(self):
+        self.assertTrue(is_new_quiz_locked(STEP3_DONE_CORRECT))
+
+    def test_locked_after_finish(self):
+        self.assertTrue(is_new_quiz_locked(STEP3_DONE_FINISHED))
+
 
 if __name__ == "__main__":
     unittest.main()
