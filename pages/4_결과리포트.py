@@ -138,7 +138,7 @@ with col3:
         <span class='report-step'>3단계 전이검증</span>
         <div class='report-label'>완료 방식</div>
         <div class='report-value'>{step3['done_reason_label']}</div>
-        <div class='report-label'>푼 퀴즈 <b>{step3['quiz_count']}</b>개 · 정답 <b>{step3['correct_count']}</b>개</div>
+        <div class='report-label'>푼 퀴즈 <b>{step3['quiz_count']}</b>개 · 제출 <b>{step3['submission_count']}</b>회 · 정답 <b>{step3['correct_count']}</b>회</div>
     </div>
     """, unsafe_allow_html=True)
 

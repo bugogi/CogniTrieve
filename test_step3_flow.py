@@ -91,23 +91,60 @@ def submit(at: AppTest, answer: str) -> AppTest:
     return at.run()
 
 
-class TestSubmitLock(unittest.TestCase):
-    def test_wrong_answer_locks_immediately(self):
-        """버그 A 회귀: 제출 한 번 만에 입력창·제출 버튼이 잠겨 보여야 한다."""
+class TestSubmitAndRetry(unittest.TestCase):
+    def test_wrong_answer_keeps_quiz_open_with_previous_answer(self):
+        """오답이면 같은 문제가 열린 채로 남고, 이전 답변이 입력창에 그대로 남는다."""
         with patch(SAVE) as save:
             at = make_app().run()
             submit(at, WRONG)
             self.assertEqual(len(at.exception), 0)
             self.assertEqual(save.call_count, 1)
             self.assertFalse(save.call_args.kwargs["is_correct"])
-            self.assertTrue(answer_box(at).disabled)
-            self.assertTrue(button(at, SUBMIT_LABEL).disabled)
+            self.assertFalse(answer_box(at).disabled)
+            self.assertEqual(answer_box(at).value, WRONG)
+            self.assertFalse(button(at, SUBMIT_LABEL).disabled)
+            self.assertFalse(button(at, NEW_QUIZ_LABEL).disabled)
             self.assertTrue(any("키워드 판정 보완 필요" in e.value for e in at.error))
+            self.assertTrue(any("1번째 제출" in c.value for c in at.caption))
 
-    def test_locked_quiz_cannot_be_resubmitted(self):
+    def test_resubmit_after_wrong_is_graded_and_saved(self):
+        """버그 A 회귀: 오답 후 같은 문제에 고친 답을 내면 채점·저장되어 정답 처리된다."""
         with patch(SAVE) as save:
             at = make_app().run()
             submit(at, WRONG)
+            submit(at, RIGHT)
+            self.assertEqual(len(at.exception), 0)
+            self.assertEqual(save.call_count, 2)
+            self.assertTrue(save.call_args.kwargs["is_correct"])
+            self.assertTrue(at.session_state["step3_done"])
+            self.assertEqual(at.session_state["step3_done_reason"], "correct")
+            self.assertEqual(
+                [h["is_correct"] for h in at.session_state["step3_history"]], [False, True]
+            )
+            self.assertEqual({h["quiz_no"] for h in at.session_state["step3_history"]}, {1})
+            # 정답 직후 바로 잠겨 보여야 한다(잠금이 한 박자 늦게 그려지던 문제의 회귀)
+            self.assertTrue(answer_box(at).disabled)
+            self.assertTrue(button(at, SUBMIT_LABEL).disabled)
+
+    def test_multiple_wrong_then_right_on_same_quiz(self):
+        """상황 2-a: 오답을 여러 번 내도 매번 저장되고, 정답이 나오면 완료된다."""
+        with patch(SAVE) as save:
+            at = make_app().run()
+            submit(at, WRONG)
+            submit(at, "값을 그대로 복사해 둡니다")
+            self.assertTrue(any("2번째 제출" in c.value for c in at.caption))
+            self.assertFalse(answer_box(at).disabled)
+            submit(at, RIGHT)
+            self.assertEqual(save.call_count, 3)
+            self.assertEqual(
+                [h["is_correct"] for h in at.session_state["step3_history"]], [False, False, True]
+            )
+            self.assertTrue(at.session_state["step3_done"])
+
+    def test_completed_quiz_cannot_be_resubmitted(self):
+        with patch(SAVE) as save:
+            at = make_app().run()
+            submit(at, RIGHT)
             button(at, SUBMIT_LABEL).click()
             at.run()
             self.assertEqual(save.call_count, 1)
@@ -137,6 +174,7 @@ class TestSubmitLock(unittest.TestCase):
             self.assertTrue(answer_box(at).disabled)
 
     def test_wrong_then_new_quiz_reopens_empty_input(self):
+        """새 퀴즈는 원할 때만: 오답 후 새 퀴즈를 고르면 빈 입력창으로 다음 퀴즈(2번)가 열린다."""
         with patch(SAVE):
             at = make_app().run()
             submit(at, WRONG)
@@ -148,6 +186,12 @@ class TestSubmitLock(unittest.TestCase):
             self.assertEqual(at.session_state["step3_attempt"], 1)
             self.assertFalse(answer_box(at).disabled)
             self.assertEqual(answer_box(at).value, "")
+            self.assertNotIn("키워드 판정 보완 필요", _page_text(at))  # 이전 퀴즈 피드백은 사라짐
+
+            submit(at, RIGHT)
+            self.assertEqual(
+                [h["quiz_no"] for h in at.session_state["step3_history"]], [1, 2]
+            )
 
 
 class TestStep3Completion(unittest.TestCase):
@@ -162,7 +206,7 @@ class TestStep3Completion(unittest.TestCase):
             self.assertEqual(at.session_state["acquired_keywords"], ["포인터"])
             self.assertEqual(
                 at.session_state["step3_history"],
-                [{"quiz_type": QUIZ["quiz_type"], "is_correct": True}],
+                [{"quiz_no": 1, "quiz_type": QUIZ["quiz_type"], "is_correct": True}],
             )
             self.assertTrue(answer_box(at).disabled)
             self.assertTrue(button(at, SUBMIT_LABEL).disabled)
@@ -202,6 +246,8 @@ class TestStep3Completion(unittest.TestCase):
             self.assertTrue(at.session_state["step3_done"])
             self.assertEqual(at.session_state["step3_done_reason"], "finished")
             self.assertEqual(at.session_state["acquired_keywords"], [])
+            self.assertTrue(answer_box(at).disabled)
+            self.assertTrue(button(at, SUBMIT_LABEL).disabled)
             self.assertTrue(button(at, NEW_QUIZ_LABEL).disabled)
             self.assertTrue(button(at, FINISH_LABEL).disabled)
             self.assertTrue(any("3단계를 마무리했습니다" in i.value for i in at.info))

@@ -39,9 +39,11 @@ COMPLETED_STATE = {
     "step2_result": STEP2_RESULT,
     "step3_done": True,
     "step3_done_reason": "finished",
+    # 1번 퀴즈 오답 → 같은 문제 재제출 오답 → 새 퀴즈(2번) 정답
     "step3_history": [
-        {"quiz_type": "개념 자기설명 작성", "is_correct": False},
-        {"quiz_type": "개념 자기설명 작성", "is_correct": True},
+        {"quiz_no": 1, "quiz_type": "개념 자기설명 작성", "is_correct": False},
+        {"quiz_no": 1, "quiz_type": "개념 자기설명 작성", "is_correct": False},
+        {"quiz_no": 2, "quiz_type": "개념 자기설명 작성", "is_correct": True},
     ],
     "acquired_keywords": ["포인터"],
 }
@@ -59,9 +61,11 @@ class TestBuildReport(unittest.TestCase):
             ["프롬프트 건전성", "자립도", "위험구간 감점"],
         )
         step3 = report["step3"]
-        self.assertEqual(step3["quiz_count"], 2)
+        self.assertEqual(step3["quiz_count"], 2)  # 서로 다른 퀴즈 번호 수
+        self.assertEqual(step3["submission_count"], 3)  # 같은 문제 재제출 포함
         self.assertEqual(step3["correct_count"], 1)
-        self.assertEqual([r["결과"] for r in step3["rows"]], ["오답", "정답"])
+        self.assertEqual([r["결과"] for r in step3["rows"]], ["오답", "오답", "정답"])
+        self.assertEqual([r["퀴즈"] for r in step3["rows"]], ["1번", "1번", "2번"])
         self.assertEqual(step3["done_reason_label"], "직접 마무리")
         self.assertEqual(step3["badges"], ["포인터"])
         self.assertEqual(report["cross_check"]["guide"], CROSS_CHECK_GUIDE)
@@ -110,11 +114,23 @@ class TestReportPage(unittest.TestCase):
         self.assertEqual(len(at.exception), 0)
         self.assertTrue(any(CROSS_CHECK_GUIDE == i.value for i in at.info))
         table = at.dataframe[0].value
-        self.assertEqual(list(table["결과"]), ["오답", "정답"])
+        self.assertEqual(list(table["결과"]), ["오답", "오답", "정답"])
+        self.assertEqual(list(table["퀴즈"]), ["1번", "1번", "2번"])
         markdown = "\n".join(m.value for m in at.markdown)
         self.assertIn("직접 마무리", markdown)
         self.assertIn("#포인터", markdown)
         self.assertIn("Health Score: **72 / 100점**", markdown)
+        self.assertIn("푼 퀴즈 <b>2</b>개 · 제출 <b>3</b>회", markdown)
+
+    def test_legacy_history_without_quiz_no(self):
+        """quiz_no가 없는 이력(이번 변경 이전 세션)도 제출 수 기준으로 표시된다."""
+        state = {
+            **COMPLETED_STATE,
+            "step3_history": [{"quiz_type": "개념 자기설명 작성", "is_correct": True}],
+        }
+        step3 = build_report(state)["step3"]
+        self.assertEqual(step3["quiz_count"], 1)
+        self.assertEqual(step3["rows"][0]["퀴즈"], "-")
 
     def test_llm_strings_are_escaped(self):
         state = {

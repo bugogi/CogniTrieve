@@ -241,8 +241,9 @@ if st.session_state['step3_celebrate']:
     st.session_state['step3_celebrate'] = False
     st.balloons()
 
-# 퀴즈 1개당 제출 1회: 저장에 성공한 제출이 있거나 3단계가 완료되면 이 퀴즈는 잠긴다
-quiz_locked = st.session_state['step3_submitted'] or st.session_state['step3_done']
+# 오답이면 같은 문제를 정답이 나올 때까지 다시 제출할 수 있다(이전 답변은 입력창에 남음).
+# 입력창·제출은 3단계가 완료(정답 또는 여기서 마무리)됐을 때만 잠근다(docs/07 3단계 "제출·완료 흐름").
+quiz_locked = st.session_state['step3_done']
 new_quiz_locked = is_new_quiz_locked(st.session_state['step3_done_reason'])
 # "여기서 마무리"는 저장된 제출이 1건 이상 있어야 열린다(제출 0건으로 완료 처리 방지)
 finish_locked = st.session_state['step3_done'] or not st.session_state['step3_history']
@@ -297,11 +298,14 @@ with col_submit:
             except Exception as db_e:
                 st.error(f"응답 저장에 실패했습니다. 다시 제출해 주세요: {db_e}")
             else:
+                # step3_submitted: 현재 퀴즈에 저장된 제출이 1건 이상 있음(피드백 표시용, 잠금 아님)
                 st.session_state['step3_submitted'] = True
                 st.session_state['step3_is_correct'] = is_correct
-                st.session_state['step3_history'].append(
-                    {"quiz_type": quiz['quiz_type'], "is_correct": is_correct}
-                )
+                st.session_state['step3_history'].append({
+                    "quiz_no": st.session_state['step3_attempt'] + 1,
+                    "quiz_type": quiz['quiz_type'],
+                    "is_correct": is_correct,
+                })
 
                 # 정답일 경우 세션 리스트에 키워드를 영구 저장 및 축하 풍선(다음 실행에서 표시)
                 # + 3단계 완료 처리
@@ -312,8 +316,8 @@ with col_submit:
                     st.session_state['step3_done'] = True
                     st.session_state['step3_done_reason'] = STEP3_DONE_CORRECT
 
-                # 잠금 상태가 이번 제출 직후 화면에 바로 반영되도록 다시 그린다
-                # (없으면 입력창이 열린 채로 남아, 다시 제출한 답변이 채점 없이 사라진다)
+                # 이번 제출의 결과(피드백·완료 잠금)가 화면에 바로 반영되도록 다시 그린다
+                # (없으면 한 박자 늦게 그려져, 다음 제출이 채점 없이 사라질 수 있다)
                 st.rerun()
 
 with col_reset:
@@ -383,6 +387,15 @@ if show_feedback:
             </p>
         </div>
         """, unsafe_allow_html=True)
+        # 같은 문제에 오답을 연달아 내도 재제출이 처리됐음을 알 수 있도록 제출 횟수를 표시한다
+        current_quiz_no = st.session_state['step3_attempt'] + 1
+        submissions_on_quiz = sum(
+            1 for h in st.session_state['step3_history'] if h.get("quiz_no") == current_quiz_no
+        )
+        st.caption(
+            f"이 문제에 {submissions_on_quiz}번째 제출했습니다. 입력창의 답변을 고쳐 다시 제출하거나, "
+            "'새로운 퀴즈 출제' 또는 '여기서 마무리'를 선택할 수 있습니다."
+        )
 
 # 나의 메타 CS 뱃지 보관함 렌더링 (영구적 누적 누적 렌더링)
 st.markdown("""

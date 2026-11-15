@@ -68,18 +68,22 @@ def _step2_section(state: Mapping) -> dict:
 
 
 def _step3_section(state: Mapping) -> dict:
+    # 제출 단위 이력(오답 후 같은 문제 재제출 포함). quiz_no로 몇 번째 퀴즈였는지 구분한다.
     history = list(state.get("step3_history") or [])
     rows = [
         {
-            "순서": i,
+            "제출": i,
+            "퀴즈": f"{item['quiz_no']}번" if item.get("quiz_no") else "-",
             "퀴즈 유형": item.get("quiz_type") or "-",
             "결과": "정답" if item.get("is_correct") else "오답",
         }
         for i, item in enumerate(history, start=1)
     ]
+    quiz_numbers = {item.get("quiz_no") for item in history if item.get("quiz_no")}
     reason = state.get("step3_done_reason")
     return {
-        "quiz_count": len(history),
+        "quiz_count": len(quiz_numbers) if quiz_numbers else len(history),
+        "submission_count": len(history),
         "correct_count": sum(1 for item in history if item.get("is_correct")),
         "rows": rows,
         "done_reason": reason,
