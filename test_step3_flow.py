@@ -79,6 +79,12 @@ def answer_box(at: AppTest):
     return at.text_input[0]
 
 
+def _page_text(at: AppTest) -> str:
+    """오류·안내·마크다운 등 화면의 텍스트 요소를 한 문자열로 모은다."""
+    elements = [*at.error, *at.info, *at.success, *at.warning, *at.markdown]
+    return "\n".join(str(e.value) for e in elements)
+
+
 def submit(at: AppTest, answer: str) -> AppTest:
     answer_box(at).input(answer)
     button(at, SUBMIT_LABEL).click()
@@ -200,6 +206,26 @@ class TestStep3Completion(unittest.TestCase):
             self.assertTrue(button(at, FINISH_LABEL).disabled)
             self.assertTrue(any("3단계를 마무리했습니다" in i.value for i in at.info))
             self.assertFalse(button(at, REPORT_LABEL).disabled)
+
+    def test_wrong_feedback_hidden_after_finish(self):
+        """회귀: 마무리 완료 상태에서는 이전 오답 피드백 문구가 화면에 없어야 한다."""
+        with patch(SAVE):
+            at = make_app().run()
+            submit(at, WRONG)
+            self.assertIn("다시 시도해 볼까요?", _page_text(at))  # 마무리 전에는 오답 피드백이 보임
+
+            button(at, FINISH_LABEL).click()
+            at.run()
+            text = _page_text(at)
+            self.assertNotIn("키워드 판정 보완 필요", text)
+            self.assertNotIn("다시 시도해 볼까요?", text)
+            self.assertIn("3단계를 마무리했습니다", text)
+
+    def test_correct_feedback_kept_after_correct_completion(self):
+        with patch(SAVE):
+            at = make_app().run()
+            submit(at, RIGHT)
+            self.assertTrue(any("정답입니다" in s.value for s in at.success))
 
     def test_report_button_hidden_before_completion(self):
         with patch(SAVE):

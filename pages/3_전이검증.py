@@ -351,7 +351,12 @@ if st.session_state['step3_done']:
         st.switch_page("pages/4_결과리포트.py")
 
 # 검증 피드백 출력
-if st.session_state['step3_submitted']:
+# 3단계가 완료(마무리)된 뒤에는 재시도를 권하는 오답 피드백을 보이지 않고 위의 완료 안내만 남긴다.
+# 정답 피드백은 정답으로 완료된 경우에 그대로 보인다.
+show_feedback = st.session_state['step3_submitted'] and (
+    st.session_state['step3_is_correct'] or not st.session_state['step3_done']
+)
+if show_feedback:
     st.write("---")
     if st.session_state['step3_is_correct']:
         st.success("🎉 정답입니다!")
