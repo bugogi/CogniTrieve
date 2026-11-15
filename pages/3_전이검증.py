@@ -195,6 +195,10 @@ if 'step3_attempt' not in st.session_state:
 if 'last_target_concept' not in st.session_state:
     st.session_state['last_target_concept'] = target_concept
 
+# 정답 직후 st.rerun()으로 다시 그리므로, 풍선은 "다음 실행에서 1회" 터뜨리도록 플래그로 넘긴다
+if 'step3_celebrate' not in st.session_state:
+    st.session_state['step3_celebrate'] = False
+
 # 2단계 핵심 개념이 이전 문제 생성 시점과 달라졌다면 퀴즈 초기화
 if st.session_state['last_target_concept'] != target_concept:
     st.session_state['step3_quiz'] = None
@@ -214,6 +218,13 @@ if st.session_state['step3_quiz'] is None:
 
 quiz = st.session_state['step3_quiz']
 
+if st.session_state['step3_celebrate']:
+    st.session_state['step3_celebrate'] = False
+    st.balloons()
+
+# 퀴즈 1개당 제출 1회: 저장에 성공한 제출이 있으면 이 퀴즈는 잠긴다
+quiz_locked = st.session_state['step3_submitted']
+
 # 퀴즈 UI 렌더링
 st.markdown(f"""
 <div class='quiz-card'>
@@ -229,28 +240,28 @@ student_answer = st.text_input(
     "여기에 퀴즈에 대한 정답이나 설명을 작성하세요:",
     placeholder="예시) 포인터는 메모리 공간의 실제 주소값을 담고 있어 직접 제어가 가능합니다.",
     key=f"student_answer_widget_{st.session_state['step3_attempt']}",
-    disabled=st.session_state['step3_submitted'],
+    disabled=quiz_locked,
 )
 
 col_submit, col_reset, _ = st.columns([2, 1, 3])
 
 with col_submit:
+    # 잠긴 상태에서는 클릭이 들어와도 처리하지 않는다(disabled 표시와 별개의 서버 측 방어)
     if st.button(
         "🚀 정답 검증 및 제출",
         type="primary",
         use_container_width=True,
-        disabled=st.session_state['step3_submitted'],
-    ):
+        disabled=quiz_locked,
+    ) and not quiz_locked:
         if not student_answer.strip():
             st.warning("답변을 먼저 입력해 주세요!")
         else:
             # 정답 검증 로직 수행 (순수 파이썬 알고리즘 호출)
             is_correct = verify_answer(student_answer, quiz['expected_keywords'])
             matched_keyword = find_matched_keyword(student_answer, quiz['expected_keywords'])
-            st.session_state['step3_submitted'] = True
-            st.session_state['step3_is_correct'] = is_correct
 
-            # Supabase에 응답 영구 저장
+            # Supabase에 저장을 시도하고, 성공한 뒤에만 잠근다(1·2단계와 동일한 원칙).
+            # 실패하면 잠그지 않고 같은 답변으로 다시 제출할 수 있게 둔다.
             try:
                 save_step3_response(
                     session_id=st.session_state['session_id'],
@@ -262,13 +273,20 @@ with col_submit:
                     matched_keyword=matched_keyword,
                 )
             except Exception as db_e:
-                st.error(f"응답 저장 중 오류가 발생했습니다(채점 결과는 정상 표시됩니다): {db_e}")
+                st.error(f"응답 저장에 실패했습니다. 다시 제출해 주세요: {db_e}")
+            else:
+                st.session_state['step3_submitted'] = True
+                st.session_state['step3_is_correct'] = is_correct
 
-            # 정답일 경우 세션 리스트에 키워드를 영구 저장 및 축하 풍선
-            if is_correct:
-                st.balloons()
-                if target_concept not in st.session_state['acquired_keywords']:
-                    st.session_state['acquired_keywords'].append(target_concept)
+                # 정답일 경우 세션 리스트에 키워드를 영구 저장 및 축하 풍선(다음 실행에서 표시)
+                if is_correct:
+                    st.session_state['step3_celebrate'] = True
+                    if target_concept not in st.session_state['acquired_keywords']:
+                        st.session_state['acquired_keywords'].append(target_concept)
+
+                # 잠금 상태가 이번 제출 직후 화면에 바로 반영되도록 다시 그린다
+                # (없으면 입력창이 열린 채로 남아, 다시 제출한 답변이 채점 없이 사라진다)
+                st.rerun()
 
 with col_reset:
     if st.button("🔄 새로운 퀴즈 출제", use_container_width=True):
