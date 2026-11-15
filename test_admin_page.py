@@ -62,7 +62,7 @@ class TestAdminPage(unittest.TestCase):
         self.assertEqual(metrics["전체 세션"], "6")
         self.assertEqual(metrics["완료 세션 (1~3단계)"], "2")
         self.assertEqual(metrics["첫 퀴즈 정답률 (주 지표)"], "50%")
-        self.assertEqual(metrics["세션당 평균 시도 횟수 (보조 지표)"], "1.50회")
+        self.assertEqual(metrics["세션당 평균 제출 횟수 (보조 지표)"], "1.50회")
 
     def test_no_raw_text_rendered(self):
         at = self._run(_raw_with_leaky_columns())

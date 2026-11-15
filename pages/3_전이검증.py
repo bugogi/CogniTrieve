@@ -5,7 +5,14 @@ import os
 # root 디렉토리를 path에 추가하여 utils 패키지가 정상 임포트되도록 보장
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.db_handler import save_step3_response
-from utils.logic_step3 import find_matched_keyword, generate_adaptive_quiz, verify_answer
+from utils.logic_step3 import (
+    STEP3_DONE_CORRECT,
+    STEP3_DONE_FINISHED,
+    find_matched_keyword,
+    generate_adaptive_quiz,
+    is_new_quiz_locked,
+    verify_answer,
+)
 
 # 페이지 설정
 st.set_page_config(
@@ -195,6 +202,22 @@ if 'step3_attempt' not in st.session_state:
 if 'last_target_concept' not in st.session_state:
     st.session_state['last_target_concept'] = target_concept
 
+# 정답 직후 st.rerun()으로 다시 그리므로, 풍선은 "다음 실행에서 1회" 터뜨리도록 플래그로 넘긴다
+if 'step3_celebrate' not in st.session_state:
+    st.session_state['step3_celebrate'] = False
+
+# 3단계(세션 단위) 완료 상태. 퀴즈 단위 상태(step3_submitted/step3_is_correct)와 분리해,
+# 정답 또는 "여기서 마무리" 시 True가 되고 결과 리포트 진입 조건으로 쓰인다.
+if 'step3_done' not in st.session_state:
+    st.session_state['step3_done'] = False
+
+if 'step3_done_reason' not in st.session_state:
+    st.session_state['step3_done_reason'] = None
+
+# 저장에 성공한 제출 이력(결과 리포트용). 답변 원문은 담지 않는다.
+if 'step3_history' not in st.session_state:
+    st.session_state['step3_history'] = []
+
 # 2단계 핵심 개념이 이전 문제 생성 시점과 달라졌다면 퀴즈 초기화
 if st.session_state['last_target_concept'] != target_concept:
     st.session_state['step3_quiz'] = None
@@ -214,6 +237,17 @@ if st.session_state['step3_quiz'] is None:
 
 quiz = st.session_state['step3_quiz']
 
+if st.session_state['step3_celebrate']:
+    st.session_state['step3_celebrate'] = False
+    st.balloons()
+
+# 오답이면 같은 문제를 정답이 나올 때까지 다시 제출할 수 있다(이전 답변은 입력창에 남음).
+# 입력창·제출은 3단계가 완료(정답 또는 여기서 마무리)됐을 때만 잠근다(docs/07 3단계 "제출·완료 흐름").
+quiz_locked = st.session_state['step3_done']
+new_quiz_locked = is_new_quiz_locked(st.session_state['step3_done_reason'])
+# "여기서 마무리"는 저장된 제출이 1건 이상 있어야 열린다(제출 0건으로 완료 처리 방지)
+finish_locked = st.session_state['step3_done'] or not st.session_state['step3_history']
+
 # 퀴즈 UI 렌더링
 st.markdown(f"""
 <div class='quiz-card'>
@@ -229,28 +263,28 @@ student_answer = st.text_input(
     "여기에 퀴즈에 대한 정답이나 설명을 작성하세요:",
     placeholder="예시) 포인터는 메모리 공간의 실제 주소값을 담고 있어 직접 제어가 가능합니다.",
     key=f"student_answer_widget_{st.session_state['step3_attempt']}",
-    disabled=st.session_state['step3_submitted'],
+    disabled=quiz_locked,
 )
 
-col_submit, col_reset, _ = st.columns([2, 1, 3])
+col_submit, col_reset, col_finish, _ = st.columns([2, 1, 1, 2])
 
 with col_submit:
+    # 잠긴 상태에서는 클릭이 들어와도 처리하지 않는다(disabled 표시와 별개의 서버 측 방어)
     if st.button(
         "🚀 정답 검증 및 제출",
         type="primary",
         use_container_width=True,
-        disabled=st.session_state['step3_submitted'],
-    ):
+        disabled=quiz_locked,
+    ) and not quiz_locked:
         if not student_answer.strip():
             st.warning("답변을 먼저 입력해 주세요!")
         else:
             # 정답 검증 로직 수행 (순수 파이썬 알고리즘 호출)
             is_correct = verify_answer(student_answer, quiz['expected_keywords'])
             matched_keyword = find_matched_keyword(student_answer, quiz['expected_keywords'])
-            st.session_state['step3_submitted'] = True
-            st.session_state['step3_is_correct'] = is_correct
 
-            # Supabase에 응답 영구 저장
+            # Supabase에 저장을 시도하고, 성공한 뒤에만 잠근다(1·2단계와 동일한 원칙).
+            # 실패하면 잠그지 않고 같은 답변으로 다시 제출할 수 있게 둔다.
             try:
                 save_step3_response(
                     session_id=st.session_state['session_id'],
@@ -262,16 +296,37 @@ with col_submit:
                     matched_keyword=matched_keyword,
                 )
             except Exception as db_e:
-                st.error(f"응답 저장 중 오류가 발생했습니다(채점 결과는 정상 표시됩니다): {db_e}")
+                st.error(f"응답 저장에 실패했습니다. 다시 제출해 주세요: {db_e}")
+            else:
+                # step3_submitted: 현재 퀴즈에 저장된 제출이 1건 이상 있음(피드백 표시용, 잠금 아님)
+                st.session_state['step3_submitted'] = True
+                st.session_state['step3_is_correct'] = is_correct
+                st.session_state['step3_history'].append({
+                    "quiz_no": st.session_state['step3_attempt'] + 1,
+                    "quiz_type": quiz['quiz_type'],
+                    "is_correct": is_correct,
+                })
 
-            # 정답일 경우 세션 리스트에 키워드를 영구 저장 및 축하 풍선
-            if is_correct:
-                st.balloons()
-                if target_concept not in st.session_state['acquired_keywords']:
-                    st.session_state['acquired_keywords'].append(target_concept)
+                # 정답일 경우 세션 리스트에 키워드를 영구 저장 및 축하 풍선(다음 실행에서 표시)
+                # + 3단계 완료 처리
+                if is_correct:
+                    st.session_state['step3_celebrate'] = True
+                    if target_concept not in st.session_state['acquired_keywords']:
+                        st.session_state['acquired_keywords'].append(target_concept)
+                    st.session_state['step3_done'] = True
+                    st.session_state['step3_done_reason'] = STEP3_DONE_CORRECT
+
+                # 이번 제출의 결과(피드백·완료 잠금)가 화면에 바로 반영되도록 다시 그린다
+                # (없으면 한 박자 늦게 그려져, 다음 제출이 채점 없이 사라질 수 있다)
+                st.rerun()
 
 with col_reset:
-    if st.button("🔄 새로운 퀴즈 출제", use_container_width=True):
+    # 잠금 조건(정책)은 utils.logic_step3.is_new_quiz_locked 한 곳에서만 정한다
+    if st.button(
+        "🔄 새로운 퀴즈 출제",
+        use_container_width=True,
+        disabled=new_quiz_locked,
+    ) and not new_quiz_locked:
         # 퀴즈 관련 상태를 모두 초기화하여 새로운 퀴즈를 강제 생성하도록 유도
         st.session_state['step3_quiz'] = None
         st.session_state['step3_submitted'] = False
@@ -279,8 +334,33 @@ with col_reset:
         st.session_state['step3_attempt'] += 1
         st.rerun()
 
+with col_finish:
+    if st.button(
+        "🏁 여기서 마무리",
+        use_container_width=True,
+        disabled=finish_locked,
+        help="정답을 맞히지 못했더라도, 지금까지 제출한 결과로 3단계를 마치고 결과 리포트로 넘어갑니다.",
+    ) and not finish_locked:
+        st.session_state['step3_done'] = True
+        st.session_state['step3_done_reason'] = STEP3_DONE_FINISHED
+        st.rerun()
+
+# 3단계 완료 안내
+if st.session_state['step3_done']:
+    if st.session_state['step3_done_reason'] == STEP3_DONE_CORRECT:
+        st.success("✅ 3단계를 완료했습니다! 정답을 맞혀 전이 검증을 통과했습니다.")
+    else:
+        st.info("✅ 3단계를 마무리했습니다. 지금까지 제출한 결과가 저장되었습니다.")
+    if st.button("📄 결과 리포트 보기", type="primary"):
+        st.switch_page("pages/4_결과리포트.py")
+
 # 검증 피드백 출력
-if st.session_state['step3_submitted']:
+# 3단계가 완료(마무리)된 뒤에는 재시도를 권하는 오답 피드백을 보이지 않고 위의 완료 안내만 남긴다.
+# 정답 피드백은 정답으로 완료된 경우에 그대로 보인다.
+show_feedback = st.session_state['step3_submitted'] and (
+    st.session_state['step3_is_correct'] or not st.session_state['step3_done']
+)
+if show_feedback:
     st.write("---")
     if st.session_state['step3_is_correct']:
         st.success("🎉 정답입니다!")
@@ -307,6 +387,15 @@ if st.session_state['step3_submitted']:
             </p>
         </div>
         """, unsafe_allow_html=True)
+        # 같은 문제에 오답을 연달아 내도 재제출이 처리됐음을 알 수 있도록 제출 횟수를 표시한다
+        current_quiz_no = st.session_state['step3_attempt'] + 1
+        submissions_on_quiz = sum(
+            1 for h in st.session_state['step3_history'] if h.get("quiz_no") == current_quiz_no
+        )
+        st.caption(
+            f"이 문제에 {submissions_on_quiz}번째 제출했습니다. 입력창의 답변을 고쳐 다시 제출하거나, "
+            "'새로운 퀴즈 출제' 또는 '여기서 마무리'를 선택할 수 있습니다."
+        )
 
 # 나의 메타 CS 뱃지 보관함 렌더링 (영구적 누적 누적 렌더링)
 st.markdown("""
@@ -334,7 +423,10 @@ if st.session_state.get('step1_done'):
 if st.session_state.get('step2_done'):
     st.sidebar.success(f"🔍 2단계: 로그분석 완료 (`{st.session_state['step2_result']['health_score']} 점`)")
 
-st.sidebar.info("🎯 3단계: 적응형 전이 검증 진행 중")
+if st.session_state['step3_done']:
+    st.sidebar.success("🎯 3단계: 전이 검증 완료")
+else:
+    st.sidebar.info("🎯 3단계: 적응형 전이 검증 진행 중")
 
 # 획득 배지 정보 사이드바 요약
 if st.session_state['acquired_keywords']:

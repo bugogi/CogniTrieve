@@ -182,8 +182,8 @@ st.markdown("### 3단계 전이검증 결과")
 s3 = am.step3_overview(summary)
 c1, c2 = st.columns(2)
 c1.metric("첫 퀴즈 정답률 (주 지표)", _pct(s3["first_quiz_correct_rate"]))
-c2.metric("세션당 평균 시도 횟수 (보조 지표)", f"{s3['avg_attempts']:.2f}회")
-st.caption("첫 퀴즈 = 세션에서 가장 먼저 제출된 퀴즈(id 최소 row). '새 퀴즈 출제'로 인한 재시도는 시도 횟수에만 반영됩니다.")
+c2.metric("세션당 평균 제출 횟수 (보조 지표)", f"{s3['avg_attempts']:.2f}회")
+st.caption("첫 퀴즈 = 세션에서 가장 먼저 제출된 답변(id 최소 row). 같은 문제 재제출과 '새 퀴즈 출제' 후 제출은 모두 제출 횟수에만 반영됩니다.")
 by_case = am.step3_by_case(summary)
 by_case["first_quiz_correct_rate"] = by_case["first_quiz_correct_rate"].map(_pct)
 by_case["avg_attempts"] = by_case["avg_attempts"].map(lambda v: f"{v:.2f}")
@@ -192,7 +192,7 @@ st.dataframe(
         "case_id": "케이스",
         "sessions": "완료 세션",
         "first_quiz_correct_rate": "첫 퀴즈 정답률",
-        "avg_attempts": "평균 시도 횟수",
+        "avg_attempts": "평균 제출 횟수",
     }),
     hide_index=True,
     use_container_width=True,

@@ -6,7 +6,7 @@ pandas로 집계한다. 집계 기준(Phase 5 그룹 A 확정):
 - "완료 세션" = 1·2·3단계 응답이 모두 있는 세션.
 - 1·2단계는 재제출 차단으로 세션당 최대 1행이므로 그 행을 그대로 쓴다.
 - 3단계는 세션의 "첫 퀴즈"(id가 가장 작은 row)의 is_correct를 주 지표로,
-  세션당 시도(제출) 횟수를 보조 지표로 쓴다.
+  세션당 제출 횟수(같은 문제 재제출 포함)를 보조 지표로 쓴다.
 - 3단계 student_answer 원문은 build_frames()에서 글자 수로 바꾼 뒤 즉시 버린다
   (화면·스크린샷 노출 방지). 2단계 risk_highlight/analysis_summary는 애초에
   조회하지 않는다.
@@ -115,7 +115,7 @@ def build_frames(raw: dict[str, list[dict]]) -> dict[str, pd.DataFrame]:
 # ---------------------------------------------------------------------------
 
 def first_quiz_per_session(step3: pd.DataFrame) -> pd.DataFrame:
-    """세션별 첫 퀴즈(id 최소 row)와 시도 횟수를 구한다."""
+    """세션별 첫 퀴즈(id 최소 row)와 제출 횟수를 구한다."""
     columns = [
         "session_id", "first_quiz_type", "first_quiz_correct",
         "first_quiz_answer_length", "first_quiz_matched_keyword",
@@ -293,7 +293,7 @@ def pearson_r(points: pd.DataFrame) -> float | None:
 
 
 def step3_overview(summary: pd.DataFrame) -> dict:
-    """3단계 주 지표(첫 퀴즈 정답률)와 보조 지표(세션당 평균 시도 횟수)."""
+    """3단계 주 지표(첫 퀴즈 정답률)와 보조 지표(세션당 평균 제출 횟수)."""
     if summary.empty:
         return {"sessions": 0, "first_quiz_correct_rate": None, "avg_attempts": None}
     return {
@@ -304,7 +304,7 @@ def step3_overview(summary: pd.DataFrame) -> dict:
 
 
 def step3_by_case(summary: pd.DataFrame) -> pd.DataFrame:
-    """케이스별 첫 퀴즈 정답률과 평균 시도 횟수."""
+    """케이스별 첫 퀴즈 정답률과 평균 제출 횟수."""
     columns = ["case_id", "sessions", "first_quiz_correct_rate", "avg_attempts"]
     if summary.empty:
         return pd.DataFrame(columns=columns)
@@ -320,7 +320,7 @@ def recent_completed_table(summary: pd.DataFrame, limit: int = 20) -> pd.DataFra
     """최근 완료 세션 표(화면 표시용). 원문 텍스트 컬럼은 포함하지 않는다."""
     columns = [
         "완료 시각(KST)", "세션", "케이스", "페르소나", "1단계 총점", "Health Score",
-        "첫 퀴즈 유형", "첫 퀴즈 정답", "답변 글자 수", "매칭 키워드", "시도 횟수",
+        "첫 퀴즈 유형", "첫 퀴즈 정답", "답변 글자 수", "매칭 키워드", "제출 횟수",
     ]
     if summary.empty:
         return pd.DataFrame(columns=columns)
@@ -336,6 +336,6 @@ def recent_completed_table(summary: pd.DataFrame, limit: int = 20) -> pd.DataFra
         "첫 퀴즈 정답": recent["first_quiz_correct"].map({True: "O", False: "X"}),
         "답변 글자 수": recent["first_quiz_answer_length"],
         "매칭 키워드": recent["first_quiz_matched_keyword"].fillna("-"),
-        "시도 횟수": recent["quiz_attempts"],
+        "제출 횟수": recent["quiz_attempts"],
     })
     return table.reset_index(drop=True)
