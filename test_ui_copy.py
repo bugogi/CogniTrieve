@@ -4,6 +4,7 @@
 import os
 import re
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("SUPABASE_URL", "http://localhost")
 os.environ.setdefault("SUPABASE_KEY", "dummy-key")
@@ -69,6 +70,21 @@ class TestStep3Copy(unittest.TestCase):
             self.assertNotIn(word, text)
         self.assertIn("검증 대상 핵심 개념", text)
         self.assertIn("나의 획득 배지 보관함", text)
+
+
+
+class TestConsentCopy(unittest.TestCase):
+    def test_consent_discloses_retention_external_ai_and_viewers(self):
+        with patch("utils.db_handler.list_cases", return_value=[]):
+            at = AppTest.from_file("app.py", default_timeout=30).run()
+        self.assertEqual(len(at.exception), 0)
+        text = _visible_text(at)
+        self.assertIn("Google Gemini API로 전송", text)
+        self.assertIn("원문 대화 로그 전체는 저장하지 않습니다", text)
+        self.assertIn("개발자와 지도해 주시는 교수님만 열람", text)
+        self.assertIn("개발자 본인이 판단하는 시점", text)
+        self.assertIn("데이터베이스에서 영구 삭제", text)
+        self.assertNotIn("별도 고지 시점까지", text)
 
 
 if __name__ == "__main__":
