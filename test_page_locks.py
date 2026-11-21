@@ -68,7 +68,7 @@ class TestStep1Lock(unittest.TestCase):
         self.assertEqual(len(at.exception), 0)
         self.assertEqual(len(at.radio), 0)
         notices = [i.value for i in at.info]
-        self.assertTrue(any("이미 제출했습니다" in n for n in notices))
+        self.assertTrue(any("제출이 저장되었습니다" in n for n in notices))
 
 
 class TestStep2Lock(unittest.TestCase):
@@ -110,7 +110,7 @@ class TestStep2Lock(unittest.TestCase):
         labels = [b.label for b in at.button]
         self.assertIn("🎯 3단계: 적응형 전이 검증(퀴즈) 시작", labels)
         notices = [i.value for i in at.info]
-        self.assertTrue(any("이미 제출했습니다" in n for n in notices))
+        self.assertTrue(any("제출이 저장되었습니다" in n for n in notices))
 
     def test_entering_without_step1_done_is_blocked(self):
         at = self._make({"step1_done": False})

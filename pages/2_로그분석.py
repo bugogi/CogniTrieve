@@ -406,7 +406,7 @@ if st.session_state['step2_result'] is not None:
         """, unsafe_allow_html=True)
 
     if st.session_state['step2_done']:
-        st.info("✅ 이미 제출했습니다. 다시 하려면 홈에서 '처음부터 다시 시작'을 누르세요.")
+        st.info("✅ 제출이 저장되었습니다. 이 단계는 세션당 한 번만 제출할 수 있어요. 다시 진단하려면 홈 사이드바의 '처음부터 다시 시작'을 눌러 주세요.")
 
     # 3. 3단계 퀴즈 대상 CS 핵심 개념 노출
     st.write("---")
