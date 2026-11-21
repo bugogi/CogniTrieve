@@ -190,8 +190,8 @@ st.markdown("""
 <div class='highlight-box'>
     <div class='highlight-title'>💡 인지적 구두쇠(Cognitive Miser) 방지와 '바람직한 마찰(Desirable Difficulty)'</div>
     <div class='highlight-desc'>
-        인공지능(AI) 비서의 보편화로 개발 공부가 쉬워진 오늘날, 많은 학습자들이 동작 원리를 완전히 이해하지 못한 채 
-        코드를 단순히 복사해서 붙여넣는 <b>'인지적 구두쇠'</b> 행동에 빠지고 있습니다.<br>
+        인공지능(AI) 비서의 보편화로 공부·과제에 AI를 쓰는 게 쉬워진 오늘날, 많은 학습자들이 원리를 완전히 이해하지 못한 채
+        AI 결과물을 그대로 가져다 쓰는 <b>'인지적 구두쇠'</b> 행동에 빠지고 있습니다.<br>
         <b>CogniTrieve</b>는 학습 과정에 의도적으로 유익한 장벽인 <b>'바람직한 마찰'</b>을 설계하여, 
         학습자가 본인의 AI 의존도를 자가 진단하고 AI와의 대화 로그를 기반으로 지식의 전이도를 검증할 수 있도록 돕는 메타인지 자극 플랫폼입니다.
     </div>
@@ -212,7 +212,7 @@ with col1:
         <div class='card-title'>📋 사전 진단 (Pre-Diagnosis)</div>
         <div class='card-desc'>
             5개의 리커트 척도 질문을 통해 자신의 <b>AI 의존 성향</b>을 진단합니다. 
-            단순 점수 합산이 아닌 핵심 설계/디버깅 역량 결핍을 감지하는 <b>과락(Hotspot) 로직</b>을 적용하여 
+            단순 점수 합산이 아닌 케이스별 핵심 학습 활동(핫스팟)의 결핍을 감지하는 <b>과락(Hotspot) 로직</b>을 적용하여
             4가지 메타인지 페르소나를 정확히 산출합니다.
         </div>
     </div>
@@ -224,9 +224,9 @@ with col2:
         <span class='card-step'>2단계</span>
         <div class='card-title'>🔍 로그 교차 검증 (Log Analysis)</div>
         <div class='card-desc'>
-            평소 AI와 나눈 실제 코딩 질문 및 대화 로그를 복사-붙여넣기하여 검증을 요청합니다. 
+            평소 AI와 나눈 실제 대화 로그를 복사-붙여넣기하여 검증을 요청합니다.
             <b>Gemini API</b>가 대화 패턴을 정밀 분석해 '통째로 짜줘' 식의 수동적인 태도를 정량 점수로 채점하고, 
-            추후 역량 검증에 필요한 <b>핵심 CS 개념</b>을 추출합니다.
+            추후 역량 검증에 필요한 <b>핵심 개념</b>을 추출합니다.
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -237,7 +237,7 @@ with col3:
         <span class='card-step'>3단계</span>
         <div class='card-title'>🎯 적응형 학습 전이 검증 (Quiz)</div>
         <div class='card-desc'>
-            2단계에서 분석된 핵심 CS 개념을 바탕으로 생성되는 맞춤형 <b>1문장 서술형 동적 퀴즈</b>를 해결합니다. 
+            2단계에서 분석된 핵심 개념을 바탕으로 생성되는 맞춤형 <b>1문장 서술형 동적 퀴즈</b>를 해결합니다. 
             정답 단어가 포함되어 있는지 백엔드에서 정밀하게 판별하며, 정답 시 <b>핵심 키워드 해시태그 배지</b>를 누적 보상으로 제공합니다.
         </div>
     </div>

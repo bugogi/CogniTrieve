@@ -233,7 +233,7 @@ if st.session_state['step1_results'] is not None:
 
 st.sidebar.info(
     "👉 **진행 순서**:\n"
-    "1. **📋 사전진단 (완료)**\n"
+    "1. **📋 사전진단**\n"
     "2. 🔍 로그분석\n"
     "3. 🎯 전이검증"
 )
