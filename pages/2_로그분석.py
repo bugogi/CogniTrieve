@@ -118,7 +118,7 @@ st.markdown("""
 st.markdown("<h1 class='page-title'>🔍 2단계: 로그 교차 검증 (Log Cross-Validation)</h1>", unsafe_allow_html=True)
 st.markdown(
     "<p class='page-subtitle'>평소 AI와 주고받은 프롬프트/질문 로그 대화 전체 또는 일부를 아래에 입력해 주세요.<br>"
-    "인간 튜터처럼 정밀하게 학생의 '인지적 구두쇠(의존성)' 행태를 잡아내고 취약한 CS 개념을 자동으로 분류합니다.</p>",
+    "AI와의 대화에서 드러나는 '인지적 구두쇠(의존성)' 경향을 살펴보고, 3단계에서 확인할 핵심 개념을 찾아냅니다.</p>",
     unsafe_allow_html=True
 )
 
@@ -171,11 +171,11 @@ if st.session_state['step2_result'] is None:
     # 예제 대화 로드 UI
     col_ex1, col_ex2, col_ex3 = st.columns([1, 1, 2])
     with col_ex1:
-        if st.button("🚨 의존형 대화 예제 로드", use_container_width=True, help="수동적이고 통째로 짜달라는 식의 대화 예제를 입력란에 주입합니다."):
+        if st.button("🚨 의존형 대화 예제 로드 (코딩 과제 예시)", use_container_width=True, help="수동적이고 통째로 짜달라는 식의 대화 예제를 입력란에 주입합니다."):
             # text_area의 key에 직접 값 할당
             st.session_state['log_input_widget'] = example_dependent
     with col_ex2:
-        if st.button("👑 주도형 대화 예제 로드", use_container_width=True, help="스스로 가설을 제시하고 깊이 있게 질문하는 대화 예제를 입력란에 주입합니다."):
+        if st.button("👑 주도형 대화 예제 로드 (코딩 과제 예시)", use_container_width=True, help="스스로 가설을 제시하고 깊이 있게 질문하는 대화 예제를 입력란에 주입합니다."):
             # text_area의 key에 직접 값 할당
             st.session_state['log_input_widget'] = example_self_directed
 
@@ -346,7 +346,7 @@ if st.session_state['step2_result'] is None:
 
 # 분석은 끝났지만 저장이 아직 확정되지 않은 경우: Gemini를 다시 부르지 않고 저장만 재시도
 elif not st.session_state['step2_done']:
-    st.warning("⚠️ 분석 결과는 저장되었지만 확인에 실패했습니다. 아래 버튼으로 저장을 재시도해 주세요.")
+    st.warning("⚠️ 분석은 완료됐지만 결과 저장에 실패했습니다. 아래 버튼으로 저장을 다시 시도해 주세요.")
     if st.button("🔁 결과 저장 재시도", type="primary", use_container_width=True):
         if _save_step2_result(st.session_state['step2_result']):
             st.session_state['step2_done'] = True
@@ -361,16 +361,17 @@ if st.session_state['step2_result'] is not None:
     st.markdown("### 📊 분석 진단 리포트")
 
     # 1. 메타인지 건강도 점수 및 등급 렌더링
+    # 라벨 어조는 docs/07 보정 메모 5번(성장 지향적 표현)에 맞춘다. 기준값(80/50)은 기존 그대로.
     if score >= 80:
-        status_text = "💚 안전: 건강한 AI 협업 상태"
+        status_text = "💚 건강한 AI 협업 습관이 잘 자리 잡혀 있어요"
         border_color = "#10B981"
         bg_color = "rgba(16, 185, 129, 0.1)"
     elif score >= 50:
-        status_text = "💛 주의: 무의식적 의존 경향 감지"
+        status_text = "💛 무의식적으로 AI에 기대는 순간이 보여요 — 충분히 바꿀 수 있어요"
         border_color = "#F59E0B"
         bg_color = "rgba(245, 158, 11, 0.1)"
     else:
-        status_text = "🚨 위험: 극심한 인지적 구두쇠 상태"
+        status_text = "🧭 AI 의존 습관을 점검해 볼 시점이에요 — 지금의 습관은 얼마든지 바뀔 수 있어요"
         border_color = "#EF4444"
         bg_color = "rgba(239, 68, 68, 0.1)"
 
@@ -406,12 +407,12 @@ if st.session_state['step2_result'] is not None:
         """, unsafe_allow_html=True)
 
     if st.session_state['step2_done']:
-        st.info("✅ 이미 제출했습니다. 다시 하려면 홈에서 '처음부터 다시 시작'을 누르세요.")
+        st.info("✅ 제출이 저장되었습니다. 이 단계는 세션당 한 번만 제출할 수 있어요. 다시 진단하려면 홈 사이드바의 '처음부터 다시 시작'을 눌러 주세요.")
 
-    # 3. 3단계 퀴즈 대상 CS 핵심 개념 노출
+    # 3. 3단계 퀴즈 대상 핵심 개념 노출
     st.write("---")
-    st.markdown("### 🎯 3단계 퀴즈용 핵심 CS 개념 추출")
-    st.write("학생의 대화 패턴에서 검증이 가장 시급하다고 분류된 컴퓨터공학(CS) 핵심 개념 단어는 다음과 같습니다. 이 개념을 기반으로 3단계 동적 검증 퀴즈가 즉석 출제됩니다.")
+    st.markdown("### 🎯 3단계 퀴즈용 핵심 개념 추출")
+    st.write("내 대화 패턴에서 검증이 가장 시급하다고 분류된 핵심 개념 단어는 다음과 같습니다. 이 개념을 기반으로 3단계 동적 검증 퀴즈가 즉석 출제됩니다.")
 
     st.markdown(f"<p style='text-align: center; margin: 1.5rem 0;'><span class='concept-badge'>{res['target_concept']}</span></p>", unsafe_allow_html=True)
 
@@ -424,7 +425,7 @@ if st.session_state['step2_result'] is not None:
     if st.session_state['step2_done']:
         btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
         with btn_col2:
-            st.markdown("<p style='text-align: center; color: #6B7280; font-size: 0.9rem; margin-top: 1rem;'>추출된 CS 핵심 개념으로 진짜 본인의 지식이 되었는지 검증해 보세요.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: #6B7280; font-size: 0.9rem; margin-top: 1rem;'>추출된 핵심 개념이 진짜 본인의 지식이 되었는지 검증해 보세요.</p>", unsafe_allow_html=True)
             if st.button("🎯 3단계: 적응형 전이 검증(퀴즈) 시작", type="primary", use_container_width=True):
                 st.switch_page("pages/3_전이검증.py")
 
@@ -439,7 +440,7 @@ if st.session_state['step2_done']:
 
 st.sidebar.info(
     "👉 **진행 순서**:\n"
-    "1. 📋 사전진단 (완료)\n"
-    "2. **🔍 로그분석 (완료)**\n"
+    "1. 📋 사전진단\n"
+    "2. **🔍 로그분석**\n"
     "3. 🎯 전이검증"
 )

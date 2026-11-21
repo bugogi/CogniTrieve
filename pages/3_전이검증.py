@@ -148,7 +148,7 @@ st.markdown("""
 st.markdown("<h1 class='page-title'>🎯 3단계: 적응형 학습 전이 검증 (Transfer Verification)</h1>", unsafe_allow_html=True)
 st.markdown(
     "<p class='page-subtitle'>이전 단계에서 분석된 핵심 개념을 바탕으로 생성된 퀴즈를 풀어보세요.<br>"
-    "단순 코드 복사에서 벗어나 실제 개념을 자신의 머리로 완전히 이해했는지 즉석에서 스스로 진증합니다.</p>", 
+    "AI 결과물을 그대로 쓰는 데서 벗어나 실제 개념을 자신의 머리로 완전히 이해했는지 즉석에서 스스로 검증합니다.</p>",
     unsafe_allow_html=True
 )
 
@@ -173,7 +173,7 @@ if not step2_done or step2_result is None:
     st.stop()
 
 # 2단계에서 도출된 개념 및 문장 불러오기
-target_concept = step2_result.get('target_concept', '컴퓨터공학 기초')
+target_concept = step2_result.get('target_concept', '핵심 개념')
 risk_highlight = step2_result.get('risk_highlight', '')
 
 # 케이스별 quiz_type 허용 목록/폴백 판별에 필요한 case 정보
@@ -182,7 +182,7 @@ case = st.session_state["case"]
 # 상단 핵심 개념 정보 알림
 st.markdown(f"""
 <div class='concept-banner'>
-    💡 검증 대상 CS 핵심 개념: <b>{target_concept}</b>
+    💡 검증 대상 핵심 개념: <b>{target_concept}</b>
 </div>
 """, unsafe_allow_html=True)
 
@@ -261,7 +261,7 @@ st.markdown(f"""
 # key에 step3_attempt를 포함시켜, 새 퀴즈가 출제될 때마다 입력창이 빈 상태로 다시 그려지게 한다
 student_answer = st.text_input(
     "여기에 퀴즈에 대한 정답이나 설명을 작성하세요:",
-    placeholder="예시) 포인터는 메모리 공간의 실제 주소값을 담고 있어 직접 제어가 가능합니다.",
+    placeholder="핵심 개념을 나의 말로 1문장으로 설명해 보세요.",
     key=f"student_answer_widget_{st.session_state['step3_attempt']}",
     disabled=quiz_locked,
 )
@@ -369,7 +369,7 @@ if show_feedback:
             <h4 style='color: #065F46; margin-top:0;'>✨ 메타인지 검증 통과!</h4>
             <p style='color: #047857; font-size: 0.95rem; margin-bottom:0;'>
                 훌륭합니다! 답변 속에 핵심 개념을 지목할 수 있는 단어가 올바르게 녹아 들어가 있습니다.<br>
-                이제 <b>'{target_concept}'</b> 개념은 단순 AI의 힘을 빌려 복붙한 것이 아니라 본인의 실제 지식으로 전이되었음을 스스로 검증하였습니다.
+                이제 <b>'{target_concept}'</b> 개념은 단순히 AI 결과물을 그대로 가져다 쓴 것이 아니라 본인의 실제 지식으로 전이되었음을 스스로 검증하였습니다.
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -397,17 +397,17 @@ if show_feedback:
             "'새로운 퀴즈 출제' 또는 '여기서 마무리'를 선택할 수 있습니다."
         )
 
-# 나의 메타 CS 뱃지 보관함 렌더링 (영구적 누적 누적 렌더링)
+# 나의 획득 배지 보관함 렌더링 (세션 내 누적)
 st.markdown("""
 <div class='badge-shelf'>
-    <div class='shelf-title'>🏆 나의 메타 CS 획득 배지 보관함</div>
+    <div class='shelf-title'>🏆 나의 획득 배지 보관함</div>
 """, unsafe_allow_html=True)
 
 if len(st.session_state['acquired_keywords']) == 0:
-    st.markdown("<p class='empty-shelf'>아직 획득한 배지가 없습니다. 퀴즈를 맞히고 첫 번째 CS 뱃지를 이곳에 획득해 보세요!</p>", unsafe_allow_html=True)
+    st.markdown("<p class='empty-shelf'>아직 획득한 배지가 없습니다. 퀴즈를 맞히고 첫 번째 배지를 이곳에 획득해 보세요!</p>", unsafe_allow_html=True)
 else:
     # 획득한 키워드를 예쁜 '해시태그 뱃지' 모양으로 누적 렌더링
-    st.write("축하합니다! 직접 이해한 지식으로 자격을 증명하여 획득한 CS 역량 목록입니다:")
+    st.write("축하합니다! 직접 이해한 지식으로 자격을 증명하여 획득한 개념 목록입니다:")
     badges_html = "<div class='badge-container'>"
     for kw in st.session_state['acquired_keywords']:
         badges_html += f"<span class='hashtag-badge'>#{kw}</span>"
@@ -437,7 +437,7 @@ if st.session_state['acquired_keywords']:
 
 st.sidebar.info(
     "👉 **진행 순서**:\n"
-    "1. 📋 사전진단 (완료)\n"
-    "2. 🔍 로그분석 (완료)\n"
-    "3. **🎯 전이검증 (진행 중)**"
+    "1. 📋 사전진단\n"
+    "2. 🔍 로그분석\n"
+    "3. **🎯 전이검증**"
 )

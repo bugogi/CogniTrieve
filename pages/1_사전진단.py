@@ -183,7 +183,7 @@ if not st.session_state['step1_done']:
             st.session_state['step1_results'] = diag_result
             st.rerun()
 else:
-    st.info("✅ 이미 제출했습니다. 다시 하려면 홈에서 '처음부터 다시 시작'을 누르세요.")
+    st.info("✅ 제출이 저장되었습니다. 이 단계는 세션당 한 번만 제출할 수 있어요. 다시 진단하려면 홈 사이드바의 '처음부터 다시 시작'을 눌러 주세요.")
 
 # 결과 렌더링
 if st.session_state['step1_results'] is not None:
@@ -233,7 +233,7 @@ if st.session_state['step1_results'] is not None:
 
 st.sidebar.info(
     "👉 **진행 순서**:\n"
-    "1. **📋 사전진단 (완료)**\n"
+    "1. **📋 사전진단**\n"
     "2. 🔍 로그분석\n"
     "3. 🎯 전이검증"
 )
